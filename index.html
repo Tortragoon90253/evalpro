@@ -716,6 +716,7 @@ tr:hover td{background:var(--gray-50)}
             <option value="JC2">⭐ JC2 — Staff Shift (พนักงานกะ)</option>
             <option value="JC3">🔷 JC3 — Leader Shift (ผู้นำกะ)</option>
             <option value="JC4">🔧 JC4 — Maintenance Operator (ช่างซ่อมบำรุง)</option>
+            <option value="JC5">📋 JC5 — Support Operator (งานเอกสารและจัดซื้อ)</option>
           </select>
           <div class="form-hint">ระดับ Job Class กำหนดสิทธิ์การใช้งานในระบบโดยอัตโนมัติ</div>
         </div>
@@ -4138,24 +4139,25 @@ function renderPermissions(){
   if(!isHR()){ goTo('dashboard'); return; }
 
   const matrix = [
-    { feature:'👥 ดูรายชื่อพนักงานทั้งหมด',      hr:'✅ ทุกกะ',    manager:'✅ กะตัวเอง',               employee:'✅ (อ่านอย่างเดียว)' },
-    { feature:'➕ เพิ่ม / แก้ไข / ลบพนักงาน',    hr:'✅',          manager:'❌',                         employee:'❌' },
-    { feature:'📝 ประเมินพนักงาน',                hr:'✅ ทุกคน',    manager:'✅ ทีมในกะตัวเอง',           employee:'✅ ประเมินตนเองเท่านั้น' },
-    { feature:'📜 ดูประวัติการประเมิน',            hr:'✅ ทุกคน',    manager:'✅ ทีมในกะตัวเอง',           employee:'✅ ตนเองเท่านั้น' },
-    { feature:'📈 ดูรายงานสรุป',                  hr:'✅ ทุกกะ',    manager:'✅ กะตัวเอง',                employee:'❌' },
-    { feature:'🔄 จัดการรอบการประเมิน',            hr:'✅',          manager:'❌',                         employee:'❌' },
-    { feature:'📋 จัดการหัวข้อประเมิน',            hr:'✅',          manager:'❌',                         employee:'❌' },
-    { feature:'🌅 จัดการแผนก (กะ A / กะ B)',      hr:'✅',          manager:'❌',                         employee:'❌' },
-    { feature:'🔐 จัดการผู้ใช้งาน',               hr:'✅',          manager:'❌',                         employee:'❌' },
-    { feature:'⬇️ Export / ⬆️ Import ข้อมูล',    hr:'✅',          manager:'❌',                         employee:'❌' },
-    { feature:'🛡️ ดูตารางสิทธิ์บทบาท',           hr:'✅',          manager:'❌',                         employee:'❌' },
+    { feature:'👥 ดูรายชื่อพนักงานทั้งหมด',      hr:'✅ ทุกกะ',    manager:'✅ กะตัวเอง',               jc4:'✅ (อ่านอย่างเดียว)',           jc5:'✅ (อ่านอย่างเดียว)' },
+    { feature:'➕ เพิ่ม / แก้ไข / ลบพนักงาน',    hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
+    { feature:'📝 ประเมินพนักงาน',                hr:'✅ ทุกคน',    manager:'✅ ทีมในกะตัวเอง',           jc4:'✅ ประเมินตนเองเท่านั้น',       jc5:'✅ ประเมินตนเองเท่านั้น' },
+    { feature:'📜 ดูประวัติการประเมิน',            hr:'✅ ทุกคน',    manager:'✅ ทีมในกะตัวเอง',           jc4:'✅ ตนเองเท่านั้น',             jc5:'✅ ตนเองเท่านั้น' },
+    { feature:'🏅 ดูผลลัพธ์ของตนเอง',             hr:'❌',          manager:'✅ ของตนเอง',                jc4:'✅ ของตนเอง',                  jc5:'✅ ของตนเอง' },
+    { feature:'📈 ดูรายงานสรุป',                  hr:'✅ ทุกกะ',    manager:'✅ กะตัวเอง',                jc4:'❌',                            jc5:'❌' },
+    { feature:'🔄 จัดการรอบการประเมิน',            hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
+    { feature:'📋 จัดการหัวข้อประเมิน',            hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
+    { feature:'🌅 จัดการแผนก (กะ A / กะ B)',      hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
+    { feature:'🔐 จัดการผู้ใช้งาน',               hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
+    { feature:'⬇️ Export / ⬆️ Import ข้อมูล',    hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
+    { feature:'🛡️ ดูตารางสิทธิ์บทบาท',           hr:'✅',          manager:'❌',                         jc4:'❌',                            jc5:'❌' },
   ];
 
   const roleCards = [
     {
       role:'hr',
       label:'Staff Leader',
-      sublabel:'หัวหน้างาน',
+      sublabel:'JC1 — หัวหน้างาน',
       icon:'👑',
       color:'var(--purple-500)',
       desc:'ดูแลระบบทั้งหมด จัดการพนักงาน แผนก รอบประเมิน และสิทธิ์ผู้ใช้งานทุกส่วน',
@@ -4164,7 +4166,7 @@ function renderPermissions(){
     {
       role:'manager',
       label:'Staff Shift / Leader Shift',
-      sublabel:'พนักงานกะ / ผู้นำกะ',
+      sublabel:'JC2 / JC3 — พนักงานกะ / ผู้นำกะ',
       icon:'🔑',
       color:'var(--blue-600)',
       desc:'ประเมินทีมงานในกะของตัวเอง ดูรายงานและประวัติการประเมินภายในกะ',
@@ -4173,11 +4175,20 @@ function renderPermissions(){
     {
       role:'employee',
       label:'Maintenance Operator',
-      sublabel:'ช่างซ่อมบำรุง',
+      sublabel:'JC4 — ช่างซ่อมบำรุง',
       icon:'🔧',
       color:'var(--green-600)',
-      desc:'ดูข้อมูลทั่วไป ประเมินตนเอง และดูผลการประเมินของตัวเองเท่านั้น',
+      desc:'ดูข้อมูลทั่วไป ประเมินตนเอง และดูผลการประเมินของตัวเองเมื่อปิดรอบแล้ว',
       badge:'กะ A และ กะ B',
+    },
+    {
+      role:'employee',
+      label:'Support Operator',
+      sublabel:'JC5 — งานเอกสารและจัดซื้อ',
+      icon:'📋',
+      color:'#C2410C',
+      desc:'ดูข้อมูลทั่วไป ประเมินตนเอง และดูผลการประเมินของตัวเองเมื่อปิดรอบแล้ว สิทธิ์เทียบเท่า JC4',
+      badge:'สนับสนุนทุกกะ',
     },
   ];
 
@@ -4185,11 +4196,11 @@ function renderPermissions(){
     <!-- Org chart hint -->
     <div class="alert alert-info mb-4" style="display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">🏭</span>
-      <span>โครงสร้างองค์กร: <strong>Staff Leader</strong> → Staff Shift A/B → Leader Shift A/B → <strong>Maintenance Operator</strong> Shift A/B</span>
+      <span>โครงสร้างองค์กร: <strong>JC1 Staff Leader</strong> → JC2 Staff Shift A/B → JC3 Leader Shift A/B → <strong>JC4 Maintenance Operator</strong> / <strong>JC5 Support Operator</strong></span>
     </div>
 
     <!-- Role cards -->
-    <div class="grid-2 mb-6" style="grid-template-columns:repeat(3,1fr)">
+    <div class="mb-6" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px">
       ${roleCards.map(r => `
         <div class="card" style="border-top:4px solid ${r.color};padding:20px 16px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
@@ -4199,9 +4210,6 @@ function renderPermissions(){
           <div class="font-bold" style="font-size:15px;color:${r.color}">${r.label}</div>
           <div class="text-sm text-gray" style="margin-bottom:8px">${r.sublabel}</div>
           <div class="text-sm" style="color:var(--gray-600);line-height:1.5">${r.desc}</div>
-          <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--gray-100);font-size:13px;color:var(--gray-500)">
-            👤 ${DB.get('users',[]).filter(u=>u.role===r.role).length} คนในระบบ
-          </div>
         </div>`).join('')}
     </div>
 
@@ -4213,17 +4221,19 @@ function renderPermissions(){
       <div style="overflow-x:auto">
         <table>
           <thead><tr>
-            <th style="min-width:220px">ฟีเจอร์</th>
-            <th style="text-align:center;color:var(--purple-500)">👑 Staff Leader<br><span style="font-weight:400;font-size:11px">(HR)</span></th>
-            <th style="text-align:center;color:var(--blue-600)">🔑 Staff / Leader Shift<br><span style="font-weight:400;font-size:11px">(Manager)</span></th>
-            <th style="text-align:center;color:var(--green-600)">🔧 Maintenance Operator<br><span style="font-weight:400;font-size:11px">(Employee)</span></th>
+            <th style="min-width:200px">ฟีเจอร์</th>
+            <th style="text-align:center;color:var(--purple-500)">👑 JC1<br><span style="font-weight:400;font-size:11px">Staff Leader</span></th>
+            <th style="text-align:center;color:var(--blue-600)">🔑 JC2/JC3<br><span style="font-weight:400;font-size:11px">Staff/Leader Shift</span></th>
+            <th style="text-align:center;color:var(--green-600)">🔧 JC4<br><span style="font-weight:400;font-size:11px">Maintenance Operator</span></th>
+            <th style="text-align:center;color:#C2410C">📋 JC5<br><span style="font-weight:400;font-size:11px">Support Operator</span></th>
           </tr></thead>
           <tbody>
             ${matrix.map((row,i) => `<tr style="${i%2===0?'background:var(--gray-50)':''}">
               <td class="font-medium">${row.feature}</td>
               <td style="text-align:center;font-size:13px">${row.hr}</td>
               <td style="text-align:center;font-size:13px">${row.manager}</td>
-              <td style="text-align:center;font-size:13px">${row.employee}</td>
+              <td style="text-align:center;font-size:13px">${row.jc4}</td>
+              <td style="text-align:center;font-size:13px">${row.jc5}</td>
             </tr>`).join('')}
           </tbody>
         </table>
