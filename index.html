@@ -2174,7 +2174,7 @@ function renderEvaluateStep1(){
   let eligible = [];
   let scopeDesc = '';
   if(isHR()){
-    eligible  = allEmps.filter(e => e.id !== myRec?.id);
+    eligible  = allEmps.filter(e => e.id !== myRec?.id && e.jobClass !== 'JC1');
     scopeDesc = `ประเมินได้ทุกคน (${eligible.length} คน)`;
   } else if(isManager()){
     // แนวทาง A: ประเมินได้ทุกคนในกะเดียวกันที่อยู่ระดับต่ำกว่า
