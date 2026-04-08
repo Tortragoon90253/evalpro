@@ -1160,7 +1160,7 @@ function seedData(){
     // Migration: ถ้าเคย seed แล้วแต่ยังไม่มี users
     const _dp = hashPass('demo1234');
     const defaultUsers = [
-      {id:1, name:'สมศักดิ์ วงศ์สุข', email:'leader@company.com',  pass:_dp, role:'hr',       color:'#8B5CF6'},
+      {id:1, name:'ต่อตระกูล รุ่งเรือง', email:'leader@company.com',  pass:_dp, role:'hr',       color:'#8B5CF6'},
       {id:2, name:'อนุชา พรหมดี',     email:'staffa@company.com',  pass:_dp, role:'manager',  color:'#3B82F6'},
       {id:3, name:'วิชัย สมบูรณ์',    email:'staffb@company.com',  pass:_dp, role:'manager',  color:'#0891B2'},
       {id:4, name:'กิตติ์ มานะดี',    email:'leadera@company.com', pass:_dp, role:'manager',  color:'#059669'},
@@ -1227,7 +1227,7 @@ function seedData(){
   }
   const _h = hashPass('demo1234');
   DB.set('users',[
-    {id:1, name:'สมศักดิ์ วงศ์สุข', email:'leader@company.com',  pass:_h, role:'hr',       color:'#8B5CF6'},
+    {id:1, name:'ต่อตระกูล รุ่งเรือง', email:'leader@company.com',  pass:_h, role:'hr',       color:'#8B5CF6'},
     {id:2, name:'อนุชา พรหมดี',     email:'staffa@company.com',  pass:_h, role:'manager',  color:'#3B82F6'},
     {id:3, name:'วิชัย สมบูรณ์',    email:'staffb@company.com',  pass:_h, role:'manager',  color:'#0891B2'},
     {id:4, name:'กิตติ์ มานะดี',    email:'leadera@company.com', pass:_h, role:'manager',  color:'#059669'},
@@ -1236,9 +1236,9 @@ function seedData(){
     {id:7, name:'นิภา จริงใจ',      email:'nipab@company.com',   pass:_h, role:'employee', color:'#F59E0B'},
   ]);
   DB.set('employees',[
-    {id:1, name:'สมศักดิ์ วงศ์สุข', position:'Staff Leader / หัวหน้างาน',                       dept:'กะ A (Shift A)', type:'พนักงานประจำกะ A', startdate:'2015-01-05', manager:'-',              jobClass:'JC1'},
-    {id:2, name:'อนุชา พรหมดี',     position:'Staff Shift A / พนักงานกะ A',                     dept:'กะ A (Shift A)', type:'พนักงานประจำกะ A', startdate:'2017-03-15', manager:'สมศักดิ์ วงศ์สุข', jobClass:'JC2'},
-    {id:3, name:'วิชัย สมบูรณ์',    position:'Staff Shift B / พนักงานกะ B',                     dept:'กะ B (Shift B)', type:'พนักงานประจำกะ B', startdate:'2017-05-01', manager:'สมศักดิ์ วงศ์สุข', jobClass:'JC2'},
+    {id:1, name:'ต่อตระกูล รุ่งเรือง', position:'Staff Leader / หัวหน้างาน',                       dept:'กะ A (Shift A)', type:'พนักงานประจำกะ A', startdate:'2015-01-05', manager:'-',              jobClass:'JC1'},
+    {id:2, name:'อนุชา พรหมดี',     position:'Staff Shift A / พนักงานกะ A',                     dept:'กะ A (Shift A)', type:'พนักงานประจำกะ A', startdate:'2017-03-15', manager:'ต่อตระกูล รุ่งเรือง', jobClass:'JC2'},
+    {id:3, name:'วิชัย สมบูรณ์',    position:'Staff Shift B / พนักงานกะ B',                     dept:'กะ B (Shift B)', type:'พนักงานประจำกะ B', startdate:'2017-05-01', manager:'ต่อตระกูล รุ่งเรือง', jobClass:'JC2'},
     {id:4, name:'กิตติ์ มานะดี',    position:'Leader Shift A / ผู้นำกะ A',                      dept:'กะ A (Shift A)', type:'พนักงานประจำกะ A', startdate:'2019-06-01', manager:'อนุชา พรหมดี',      jobClass:'JC3'},
     {id:5, name:'ณัฐพล ใจซื่อ',     position:'Leader Shift B / ผู้นำกะ B',                      dept:'กะ B (Shift B)', type:'พนักงานประจำกะ B', startdate:'2019-08-01', manager:'วิชัย สมบูรณ์',    jobClass:'JC3'},
     {id:6, name:'มาลี สุขใจ',       position:'Maintenance Operator Shift A / ช่างซ่อมบำรุงกะ A', dept:'กะ A (Shift A)', type:'พนักงานประจำกะ A', startdate:'2021-02-10', manager:'กิตติ์ มานะดี',    jobClass:'JC4'},
@@ -2121,7 +2121,7 @@ function confirmImportCSV(){
 function downloadCSVTemplate(){
   const sample = [
     CSV_HEADERS_TH.join(','),
-    'สมชาย ใจดี,Staff Shift A / พนักงานกะ A,กะ A (Shift A),พนักงานประจำกะ A,JC2,สมศักดิ์ วงศ์สุข,2024-01-15,active',
+    'สมชาย ใจดี,Staff Shift A / พนักงานกะ A,กะ A (Shift A),พนักงานประจำกะ A,JC2,ต่อตระกูล รุ่งเรือง,2024-01-15,active',
     'วิไล รักงาน,Maintenance Operator Shift B / ช่างซ่อมบำรุงกะ B,กะ B (Shift B),พนักงานประจำกะ B,JC4,ณัฐพล ใจซื่อ,2024-03-01,active',
   ];
   const blob = new Blob(['\uFEFF'+sample.join('\r\n')], {type:'text/csv;charset=utf-8;'});
@@ -4317,7 +4317,7 @@ function renderQuickLogin(){
   let users = DB.get('users',[]);
   if(!users.length){
     users = [
-      {id:1, name:'สมศักดิ์ วงศ์สุข', email:'leader@company.com', role:'hr'},
+      {id:1, name:'ต่อตระกูล รุ่งเรือง', email:'leader@company.com', role:'hr'},
       {id:2, name:'อนุชา พรหมดี',     email:'staffa@company.com', role:'manager'},
       {id:6, name:'มาลี สุขใจ',       email:'mala@company.com',   role:'employee'},
     ];
