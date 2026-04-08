@@ -125,11 +125,6 @@ tr:hover td{background:var(--gray-50)}
 .login-logo-icon{width:64px;height:64px;background:var(--blue-600);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;margin:0 auto 12px}
 .login-logo h1{font-size:26px;font-weight:700;color:var(--gray-900)}
 .login-logo p{font-size:13px;color:var(--gray-400);margin-top:2px}
-.demo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
-.demo-btn{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:8px 4px;text-align:center;cursor:pointer;transition:.15s;font-family:'Sarabun',sans-serif}
-.demo-btn:hover{background:var(--blue-50);border-color:var(--blue-200)}
-.demo-btn .role{font-size:12px;font-weight:700;color:var(--gray-700)}
-.demo-btn .email{font-size:10px;color:var(--gray-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ──────────────────────────────────────────────────────
    APP SHELL
@@ -285,11 +280,6 @@ tr:hover td{background:var(--gray-50)}
       🔑 เข้าสู่ระบบ
     </button>
 
-    <!-- Quick login -->
-    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--gray-100)">
-      <p class="text-xs text-gray" style="text-align:center;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">เข้าสู่ระบบด่วน</p>
-      <div class="demo-grid" id="quick-login-grid"></div>
-    </div>
   </div>
 </div>
 
@@ -1274,14 +1264,6 @@ let currentUser = null;
 const ROLE_LABEL = { hr:'HR Admin', manager:'หัวหน้างาน', employee:'พนักงาน' };
 const ROLE_COLOR = { hr:'#8B5CF6', manager:'#3B82F6', employee:'#22C55E' };
 
-// Quick login (demo-only: ไม่ฝัง password ใน HTML — ใช้ userId แทน)
-function quickLogin(userId){
-  const u = DB.get('users',[]).find(u => u.id === userId);
-  if(!u) return;
-  currentUser = {...u, avatar: avatarText(u.name)};
-  document.getElementById('login-error').classList.add('hidden');
-  enterApp();
-}
 
 function fillDemo(email, pass){
   document.getElementById('login-email').value = email;
@@ -4306,38 +4288,10 @@ function showToast(msg, type=''){
   setTimeout(()=>t.remove(), 3000);
 }
 
-// ── QUICK LOGIN (ดึงจาก DB) ───────────────────────────────
-function renderQuickLogin(){
-  const grid = document.getElementById('quick-login-grid');
-  if(!grid) return;
-  const roleIcon  = { hr:'👑', manager:'🔑', employee:'🙋' };
-  const roleOrder = ['hr','manager','employee'];
-
-  // ดึง users จาก DB — fallback ไปใช้ seed accounts ถ้าว่าง
-  let users = DB.get('users',[]);
-  if(!users.length){
-    users = [
-      {id:1, name:'ต่อตระกูล รุ่งเรือง', email:'leader@company.com', role:'hr'},
-      {id:2, name:'อนุชา พรหมดี',     email:'staffa@company.com', role:'manager'},
-      {id:6, name:'มาลี สุขใจ',       email:'mala@company.com',   role:'employee'},
-    ];
-  }
-
-  // เลือก 1 คนต่อ role (HR → Manager → Employee)
-  const picks = roleOrder.map(role => users.find(u => u.role === role)).filter(Boolean);
-
-  grid.innerHTML = picks.map(u =>
-    `<div class="demo-btn" onclick="quickLogin(${u.id})">
-      <div class="role">${roleIcon[u.role]||'👤'} ${ROLE_LABEL[u.role]||u.role}</div>
-      <div class="email" style="font-size:10px;color:var(--gray-400);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.email}</div>
-    </div>`
-  ).join('');
-}
 
 // ── INIT (เรียกโดย Firebase module หลังโหลดข้อมูลจาก Firestore) ──
 window._initApp = function() {
   seedData();
-  renderQuickLogin();
   // Restore session เมื่อ refresh หน้า
   const sid = sessionStorage.getItem('ep_session');
   if(sid){
