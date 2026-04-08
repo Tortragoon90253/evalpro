@@ -1215,18 +1215,24 @@ function seedData(){
       const allEvals = DB.get('evals',[]);
       let notifs = DB.get('notifications',[]);
       let changed = false;
+      // จับทั้งสองรูปแบบ: "คะแนน: X.X/5" และ "คะแนน X.X/5" (มี/ไม่มี colon)
+      const scoreRe = /คะแนน:?\s*[\d.]+\/\d+/;
       notifs = notifs.map(n => {
-        // จับรูปแบบ "คะแนน: X.X/5" หรือ "คะแนน: X/5"
-        if(/คะแนน:\s*[\d.]+\/\d+/.test(n.body)){
-          changed = true;
-          // หา eval ที่ตรงกับ notification นี้ (ถ้าหาได้)
-          const ev = allEvals.find(e => n.body.includes(e.empName) || n.body.includes(e.evaluator));
-          const newBody = ev
-            ? `ประเมินโดย: ${ev.evaluator} · ${ev.empName}`
-            : n.body.replace(/\s*คะแนน:\s*[\d.]+\/\d+/, '');
-          return {...n, body: newBody};
-        }
-        return n;
+        if(!scoreRe.test(n.body)) return n;
+        changed = true;
+        // พยายามดึงชื่อผู้ถูกประเมินจาก body รูปแบบ "ประเมิน XXX คะแนน"
+        const nameMatch = n.body.match(/ประเมิน\s+(.+?)\s+คะแนน/);
+        const empNameFromBody = nameMatch ? nameMatch[1] : null;
+        // ค้นหา eval ที่ตรงกัน
+        const ev = allEvals.find(e =>
+          (empNameFromBody && e.empName === empNameFromBody) ||
+          n.body.includes(e.empName) ||
+          n.body.includes(e.evaluator)
+        );
+        const newBody = ev
+          ? `ประเมินโดย: ${ev.evaluator} · ${ev.empName}`
+          : n.body.replace(/\s*คะแนน:?\s*[\d.]+\/\d+/, '');
+        return {...n, body: newBody};
       });
       if(changed) DB.set('notifications', notifs);
     })();
