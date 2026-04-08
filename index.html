@@ -2413,7 +2413,7 @@ function saveEval(){
   });
   DB.set('evals', evals);
   showToast('✅ บันทึกผลการประเมินสำเร็จ!','success');
-  addNotification('✅','บันทึกการประเมินสำเร็จ',`ประเมิน ${emp.name} คะแนน ${avg.toFixed(1)}/5`);
+  addNotification('✅','บันทึกการประเมินสำเร็จ',`ประเมินโดย: ${currentUser.name} · ${emp.name}`);
   cancelEval();
   renderDashboard();
 }
@@ -3371,6 +3371,35 @@ function renderReports(){
       <select id="rpt-filter-emp" onchange="renderReports()">${empOptions}</select>
     </div>
 
+    <!-- ── Comparison section ── -->
+    <div class="card mb-4">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div class="section-title" style="margin-bottom:0">⚖️ เปรียบเทียบผลการประเมิน</div>
+        <span style="font-size:12px;color:var(--gray-400)">เลือก 2–3 คน</span>
+      </div>
+      <div id="rpt-cmp-picks" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        ${empList.map(emp=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:5px 10px;border:1.5px solid var(--gray-200);border-radius:8px;user-select:none">
+          <input type="checkbox" value="${emp.id}" onchange="renderCompare()" style="accent-color:#3B82F6">
+          <span class="avatar" style="background:${avatarColor(emp.name)};width:22px;height:22px;font-size:8px;flex-shrink:0">${avatarText(emp.name)}</span>
+          ${emp.name.split(' ')[0]}
+        </label>`).join('')}
+      </div>
+      <div id="rpt-cmp-warn" style="font-size:12px;color:var(--red-500);min-height:16px"></div>
+      <div id="rpt-cmp-area" style="display:none;margin-top:4px">
+        <div class="rpt-chart-grid-2">
+          <div class="rpt-chart-card">
+            <div class="rpt-chart-title">📊 คะแนนแต่ละรอบ</div>
+            <div class="rpt-chart-box h240"><canvas id="rpt-cmp-bar-chart"></canvas></div>
+          </div>
+          <div class="rpt-chart-card">
+            <div class="rpt-chart-title">🕸 เปรียบเทียบรายเกณฑ์ (เฉลี่ยทุกรอบ)</div>
+            <div class="rpt-chart-box h240"><canvas id="rpt-cmp-radar-chart"></canvas></div>
+          </div>
+        </div>
+        <div id="rpt-cmp-table" style="margin-top:12px"></div>
+      </div>
+    </div>
+
     <!-- Score Trend Line Chart (full width) -->
     <div class="rpt-chart-card rpt-chart-card full mb-0">
       <div class="rpt-chart-title">📈 แนวโน้มคะแนนรายบุคคลแต่ละรอบประเมิน</div>
@@ -3678,6 +3707,162 @@ function renderReports(){
     })();
 
   }, 0);
+}
+
+// ── COMPARE (called by checkboxes inside renderReports HTML) ──────────
+function renderCompare(){
+  const checks  = [...document.querySelectorAll('#rpt-cmp-picks input[type=checkbox]:checked')];
+  const area    = document.getElementById('rpt-cmp-area');
+  const warnEl  = document.getElementById('rpt-cmp-warn');
+
+  // enforce max 3
+  if(checks.length > 3){
+    const last = checks[checks.length-1];
+    last.checked = false;
+    if(warnEl) warnEl.textContent = '⚠️ เลือกได้สูงสุด 3 คน';
+    return;
+  }
+  if(warnEl) warnEl.textContent = '';
+
+  if(checks.length < 2){
+    if(area) area.style.display = 'none';
+    if(warnEl && checks.length === 1) warnEl.textContent = 'เลือกอีก 1 คนเพื่อเริ่มเปรียบเทียบ';
+    return;
+  }
+
+  if(area) area.style.display = '';
+
+  const selectedIds = checks.map(c => parseInt(c.value));
+  const allEmps     = DB.get('employees',[]);
+  const allEvals    = DB.get('evals',[]);
+  const cycles      = [...DB.get('cycles',[])].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const critSections = DB.get('criteria',[]);
+
+  function evalCycleId(ev){
+    const c = cycles.find(c => ev.date >= c.startDate && ev.date <= c.endDate);
+    return c ? c.id : null;
+  }
+  function cycleShort(c){
+    if(!c) return '—';
+    const y   = parseInt(c.startDate.slice(0,4))+543;
+    const idx = cycles.filter(x=>x.startDate.slice(0,4)===c.startDate.slice(0,4)).indexOf(c)+1;
+    return `ร.${idx}/${String(y).slice(-2)}`;
+  }
+  function avgColor(v){ return v>=4?'var(--green-600)':v>=3?'var(--blue-600)':'var(--yellow-600)'; }
+
+  const COLORS  = ['#3B82F6','#22C55E','#F59E0B'];
+  const selEmps = selectedIds.map(id=>allEmps.find(e=>e.id===id)).filter(Boolean);
+  const selEvals = allEvals.filter(ev=>selectedIds.includes(ev.empId));
+
+  const cmpCycleIds = [...new Set(selEvals.map(ev=>evalCycleId(ev)).filter(Boolean))];
+  const cmpCycles   = cycles.filter(c=>cmpCycleIds.includes(c.id));
+  const cmpLabels   = cmpCycles.map(c=>cycleShort(c));
+
+  const allItems = critSections.flatMap(sec=>(sec.items||[]).map(it=>({key:`c${it.id}`,name:it.name})));
+  const radarItems = allItems.slice(0,8);
+
+  // destroy old compare charts
+  ['cmpBar','cmpRadar'].forEach(k=>{
+    if(window._rptCharts?.[k]){ try{ window._rptCharts[k].destroy(); }catch(e){} delete window._rptCharts[k]; }
+  });
+
+  // ── Grouped Bar Chart (scores per cycle) ──
+  const barCtx = document.getElementById('rpt-cmp-bar-chart');
+  if(barCtx){
+    const fontFam = "'Sarabun', sans-serif";
+    Chart.defaults.font.family = fontFam;
+    window._rptCharts = window._rptCharts || {};
+    window._rptCharts.cmpBar = new Chart(barCtx.getContext('2d'),{
+      type:'bar',
+      data:{
+        labels: cmpLabels.length ? cmpLabels : ['ไม่มีข้อมูลรอบ'],
+        datasets: selEmps.map((emp,i)=>({
+          label: emp.name.split(' ')[0],
+          data: cmpCycles.map(cyc=>{
+            const ev = allEvals.find(e=>e.empId===emp.id && evalCycleId(e)===cyc.id);
+            return ev ? parseFloat(ev.avg.toFixed(2)) : null;
+          }),
+          backgroundColor: COLORS[i]+'BB',
+          borderColor: COLORS[i],
+          borderWidth:1.5, borderRadius:5,
+        }))
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'bottom',labels:{boxWidth:10,padding:10,font:{size:11}}},
+          tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y!=null?c.parsed.y.toFixed(2):'—'} / 5`}}
+        },
+        scales:{
+          y:{min:0,max:5,ticks:{stepSize:1,callback:v=>v.toFixed(0)},grid:{color:'#f0f0f0'}},
+          x:{grid:{display:false}}
+        }
+      }
+    });
+  }
+
+  // ── Radar Chart (criteria average across all evals) ──
+  const radarCtx = document.getElementById('rpt-cmp-radar-chart');
+  if(radarCtx && radarItems.length){
+    window._rptCharts.cmpRadar = new Chart(radarCtx.getContext('2d'),{
+      type:'radar',
+      data:{
+        labels: radarItems.map(x=>x.name.split('/')[0].trim().slice(0,12)),
+        datasets: selEmps.map((emp,i)=>{
+          const empEvals = allEvals.filter(e=>e.empId===emp.id);
+          const data = radarItems.map(item=>{
+            const vals = empEvals.map(e=>e.scores?.[item.key]).filter(v=>v>0);
+            return vals.length ? parseFloat((vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2)) : 0;
+          });
+          return { label:emp.name.split(' ')[0], data, borderColor:COLORS[i], backgroundColor:COLORS[i]+'33', borderWidth:2, pointRadius:3 };
+        })
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:8,font:{size:11}}}},
+        scales:{r:{
+          min:0,max:5,ticks:{stepSize:1,font:{size:9}},
+          grid:{color:'#e5e7eb'}, angleLines:{color:'#e5e7eb'},
+          pointLabels:{font:{size:10}}
+        }}
+      }
+    });
+  }
+
+  // ── Summary table ──
+  const tableEl = document.getElementById('rpt-cmp-table');
+  if(tableEl){
+    const cycleHeaders = cmpCycles.map(c=>`<th style="text-align:center">${cycleShort(c)}</th>`).join('');
+    const rows = selEmps.map((emp,i)=>{
+      const empEvals   = allEvals.filter(e=>e.empId===emp.id);
+      const overallAvg = empEvals.length ? empEvals.reduce((s,e)=>s+e.avg,0)/empEvals.length : 0;
+      const cycleCols  = cmpCycles.map(cyc=>{
+        const ev = allEvals.find(e=>e.empId===emp.id && evalCycleId(e)===cyc.id);
+        const v  = ev ? ev.avg : null;
+        return `<td style="text-align:center">${v!=null?`<span style="font-weight:700;color:${avgColor(v)}">${v.toFixed(2)}</span>`:'<span style="color:#ccc">—</span>'}</td>`;
+      }).join('');
+      return `<tr>
+        <td><div class="user-cell">
+          <div class="avatar" style="background:${COLORS[i]};width:28px;height:28px;font-size:10px">${avatarText(emp.name)}</div>
+          <span class="font-semibold">${emp.name}</span>
+        </div></td>
+        <td class="text-sm text-gray">${emp.dept.split(' (')[0]}</td>
+        ${cycleCols}
+        <td style="text-align:center;font-weight:700;color:${avgColor(overallAvg)}">${overallAvg?overallAvg.toFixed(2):'—'}</td>
+      </tr>`;
+    }).join('');
+    tableEl.innerHTML = `
+      <div style="font-size:13px;font-weight:600;color:var(--gray-600);margin-bottom:8px">📋 ตารางเปรียบเทียบ</div>
+      <div class="table-wrap" style="box-shadow:none;border:1px solid var(--gray-200)">
+        <table>
+          <thead><tr>
+            <th>พนักงาน</th><th>แผนก</th>${cycleHeaders}
+            <th style="text-align:center">เฉลี่ยรวม</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
 }
 
 // ── NOTIFICATIONS ────────────────────────────────────────
