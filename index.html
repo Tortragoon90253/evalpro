@@ -1197,13 +1197,19 @@ function seedData(){
       const needsReset = !crits.length || crits.some(c => !c.jobClasses);
       if(needsReset) DB.set('criteria', getDefaultCriteria());
     })();
-    // Migration: ถ้ายังไม่มี cycles
+    // Migration: ถ้ายังไม่มี cycles (ไม่ seed รอบ default อีกต่อไป)
     if(!DB.get('cycles',[]).length){
-      DB.set('cycles',[
-        {id:1, name:'รอบประเมินประจำปี 2568 ครั้งที่ 1', startDate:'2025-04-01', endDate:'2025-06-30', description:'รอบประเมินครึ่งปีแรก', departments:['all'], status:'closed', createdAt:'2025-04-01'},
-        {id:2, name:'รอบประเมินประจำปี 2568 ครั้งที่ 2', startDate:'2025-10-01', endDate:'2025-12-31', description:'รอบประเมินครึ่งปีหลัง', departments:['all'], status:'active', createdAt:'2025-10-01'},
-      ]);
+      DB.set('cycles',[]);
     }
+    // Migration: ลบรอบประเมิน 2568 ครั้งที่ 1 และ 2 ที่ไม่มีข้อมูลออก
+    (function(){
+      const evals = DB.get('evals',[]);
+      DB.set('cycles', DB.get('cycles',[]).filter(c => {
+        const hasEvals = evals.some(ev => ev.date >= c.startDate && ev.date <= c.endDate);
+        const isSeedCycle = c.id === 1 || c.id === 2;
+        return !(isSeedCycle && !hasEvals);
+      }));
+    })();
     // Migration: ถ้ายังไม่มี departments
     if(!DB.get('departments',[]).length){
       DB.set('departments',[
@@ -1254,10 +1260,7 @@ function seedData(){
     {id:3, empId:4, empName:'กิตติ์ มานะดี',   date:'2025-01-25', evaluator:'อนุชา พรหมดี',  scores:{c1:4,c2:4,c3:4,c4:4,c5:4,c6:4,c7:4,c8:4,c9:4}, comment:'ทำหน้าที่ผู้นำได้ดี บริหารทีมซ่อมบำรุงกะ A ได้เป็นอย่างดี', avg:4.0},
   ]);
   DB.set('criteria', getDefaultCriteria());
-  DB.set('cycles',[
-    {id:1, name:'รอบประเมินประจำปี 2568 ครั้งที่ 1', startDate:'2025-04-01', endDate:'2025-06-30', description:'รอบประเมินครึ่งปีแรก', departments:['all'], status:'closed', createdAt:'2025-04-01'},
-    {id:2, name:'รอบประเมินประจำปี 2568 ครั้งที่ 2', startDate:'2025-10-01', endDate:'2025-12-31', description:'รอบประเมินครึ่งปีหลัง', departments:['all'], status:'active', createdAt:'2025-10-01'},
-  ]);
+  DB.set('cycles',[]);
   DB.set('departments',[
     {id:1, name:'กะ A (Shift A)', icon:'🌅', head:'อนุชา พรหมดี',  color:'#3B82F6'},
     {id:2, name:'กะ B (Shift B)', icon:'🌙', head:'วิชัย สมบูรณ์', color:'#8B5CF6'},
