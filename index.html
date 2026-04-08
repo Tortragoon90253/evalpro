@@ -3064,10 +3064,12 @@ function renderReports(){
   if(isEmployee()){ goTo('dashboard'); return; }
 
   // ── อ่านค่า filter ก่อน rebuild (ถ้ายังมี element อยู่) ──
-  const _selDept = document.getElementById('rpt-filter-dept');
-  const _selEmp  = document.getElementById('rpt-filter-emp');
-  const _curDept = _selDept ? _selDept.value : 'all';
-  const _curEmp  = _selEmp  ? _selEmp.value  : 'all';
+  const _selDept  = document.getElementById('rpt-filter-dept');
+  const _selEmp   = document.getElementById('rpt-filter-emp');
+  const _selCycle = document.getElementById('rpt-filter-cycle');
+  const _curDept  = _selDept  ? _selDept.value  : 'all';
+  const _curEmp   = _selEmp   ? _selEmp.value   : 'all';
+  const _curCycle = _selCycle ? _selCycle.value  : 'all';
 
   let evals     = DB.get('evals',[]);
   let employees = DB.get('employees',[]);
@@ -3078,7 +3080,24 @@ function renderReports(){
     employees = team;
   }
 
+  // ── โหลด cycles + helper (ใช้ในการ filter และ render) ──
+  const cycles = [...DB.get('cycles',[])].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  function evalCycleId(ev){
+    const c = cycles.find(c=> ev.date >= c.startDate && ev.date <= c.endDate);
+    return c ? c.id : null;
+  }
+  function cycleShort(c){
+    if(!c) return '—';
+    const y = parseInt(c.startDate.slice(0,4))+543;
+    const idx = cycles.filter(x=>x.startDate.slice(0,4)===c.startDate.slice(0,4)).indexOf(c)+1;
+    return `ร.${idx}/${String(y).slice(-2)}`;
+  }
+
   // ── กรองตาม filter ──────────────────────────────────────
+  if(_curCycle !== 'all'){
+    const cycleIdNum = parseInt(_curCycle);
+    evals = evals.filter(ev => evalCycleId(ev) === cycleIdNum);
+  }
   if(_curDept !== 'all'){
     const deptEmpIds = employees.filter(e=>e.dept===_curDept).map(e=>e.id);
     evals     = evals.filter(ev=>deptEmpIds.includes(ev.empId));
@@ -3101,26 +3120,11 @@ function renderReports(){
   }
 
   // ── Data preparation ──────────────────────────────────
-  const cycles = [...DB.get('cycles',[])].sort((a,b)=>a.startDate.localeCompare(b.startDate));
   const CHART_COLORS = ['#8B5CF6','#3B82F6','#0891B2','#059669','#7C3AED','#22C55E','#F59E0B','#EC4899','#EF4444'];
 
-  // Map each eval → cycleId
-  function evalCycleId(ev){
-    const c = cycles.find(c=> ev.date >= c.startDate && ev.date <= c.endDate);
-    return c ? c.id : null;
-  }
-
-  // Cycles that actually have evals
+  // Cycles that actually have evals (after all filters)
   const activeCycleIds = [...new Set(evals.map(ev=>evalCycleId(ev)).filter(Boolean))];
   const activeCycles   = cycles.filter(c=>activeCycleIds.includes(c.id));
-
-  // Cycle short name (ร.1/68 style)
-  function cycleShort(c){
-    if(!c) return '—';
-    const y = parseInt(c.startDate.slice(0,4))+543;
-    const idx = cycles.filter(x=>x.startDate.slice(0,4)===c.startDate.slice(0,4)).indexOf(c)+1;
-    return `ร.${idx}/${String(y).slice(-2)}`;
-  }
 
   // Unique depts & unique employees in filtered set
   const depts    = [...new Set(employees.map(e=>e.dept))].sort();
@@ -3170,10 +3174,42 @@ function renderReports(){
   function avgColor(v){ return v>=4?'var(--green-600)':v>=3?'var(--blue-600)':'var(--yellow-600)'; }
 
   // ── Build filter options ──────────────────────────────
-  const deptOptions = ['<option value="all">ทุกแผนก</option>',
+  const allCycles    = [...DB.get('cycles',[])].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const cycleOptions = ['<option value="all">ทุกรอบ</option>',
+    ...allCycles.map(c=>`<option value="${c.id}">${cycleShort(c)} · ${c.name||''}</option>`)].join('');
+  const deptOptions  = ['<option value="all">ทุกแผนก</option>',
     ...depts.map(d=>`<option value="${d}">${d.split(' (')[0]}</option>`)].join('');
-  const empOptions  = ['<option value="all">ทุกคน</option>',
+  const empOptions   = ['<option value="all">ทุกคน</option>',
     ...empList.map(e=>`<option value="${e.id}">${e.name}</option>`)].join('');
+
+  // ── Category (section) average bars ──────────────────
+  const catBars = critSections.map(sec=>{
+    const secKeys = (sec.items||[]).map(it=>`c${it.id}`);
+    const vals = evals.flatMap(ev => secKeys.map(k=>ev.scores?.[k]).filter(v=>v>0));
+    if(!vals.length) return '';
+    const avg = vals.reduce((s,v)=>s+v,0)/vals.length;
+    const pct = (avg/5*100).toFixed(0);
+    const col = avg>=4?'var(--green-500)':avg>=3?'var(--blue-500)':'var(--yellow-500)';
+    return `<div class="report-bar-row">
+      <div class="report-bar-label" style="font-size:12px;width:160px">${sec.icon||''} ${sec.name.split('/')[0].trim()}</div>
+      <div class="report-bar-wrap"><div class="report-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+      <div class="report-bar-val">${avg.toFixed(2)}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  // Category chart data (for bar chart)
+  const catChartLabels = critSections.filter(sec=>{
+    const secKeys = (sec.items||[]).map(it=>`c${it.id}`);
+    return evals.some(ev=>secKeys.some(k=>(ev.scores?.[k]||0)>0));
+  }).map(sec=>sec.name.split('/')[0].trim().slice(0,20));
+  const catChartData = critSections.filter(sec=>{
+    const secKeys = (sec.items||[]).map(it=>`c${it.id}`);
+    return evals.some(ev=>secKeys.some(k=>(ev.scores?.[k]||0)>0));
+  }).map(sec=>{
+    const secKeys = (sec.items||[]).map(it=>`c${it.id}`);
+    const vals = evals.flatMap(ev=>secKeys.map(k=>ev.scores?.[k]).filter(v=>v>0));
+    return vals.length ? parseFloat((vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2)) : 0;
+  });
 
   // ── Legend pills for trend chart ──────────────────────
   const legendPills = empList.map((emp,i)=>
@@ -3282,6 +3318,8 @@ function renderReports(){
     <!-- Filter bar -->
     <div class="rpt-filter-bar">
       <span style="font-size:13px;font-weight:600;color:var(--gray-600)">🔍 กรองข้อมูล:</span>
+      <label>รอบประเมิน</label>
+      <select id="rpt-filter-cycle" onchange="renderReports()">${cycleOptions}</select>
       <label>แผนก</label>
       <select id="rpt-filter-dept" onchange="renderReports()">${deptOptions}</select>
       <label>พนักงาน</label>
@@ -3324,15 +3362,22 @@ function renderReports(){
       </div>
     </div>
 
-    <!-- Static bars (dept + criteria) -->
+    <!-- Category chart (full width) -->
+    <div class="rpt-chart-card rpt-chart-card full mb-0" style="margin-top:16px">
+      <div class="rpt-chart-title">📂 คะแนนเฉลี่ยรายหมวดหมู่</div>
+      <div class="rpt-chart-sub">เปรียบเทียบคะแนนเฉลี่ยแต่ละหมวดหมู่การประเมิน</div>
+      <div class="rpt-chart-box h260"><canvas id="rpt-cat-chart"></canvas></div>
+    </div>
+
+    <!-- Static bars (dept + criteria + category) -->
     <div class="grid-2 mb-6" style="margin-top:16px">
       <div class="card">
         <div class="section-title">🏢 คะแนนเฉลี่ยตามแผนก (รวมทุกรอบ)</div>
         ${deptBars||'<div style="color:var(--gray-400);font-size:13px">ไม่มีข้อมูล</div>'}
       </div>
       <div class="card">
-        <div class="section-title">📋 คะแนนเฉลี่ยตามเกณฑ์ (รวมทุกรอบ)</div>
-        ${critBars||'<div style="color:var(--gray-400);font-size:13px">ไม่มีข้อมูล</div>'}
+        <div class="section-title">📂 คะแนนเฉลี่ยรายหมวดหมู่</div>
+        ${catBars||'<div style="color:var(--gray-400);font-size:13px">ไม่มีข้อมูล</div>'}
       </div>
     </div>
 
@@ -3355,8 +3400,10 @@ function renderReports(){
   `;
 
   // ── Restore filter selection หลัง el.innerHTML rebuild ──
+  const _rc = document.getElementById('rpt-filter-cycle');
   const _rd = document.getElementById('rpt-filter-dept');
   const _re = document.getElementById('rpt-filter-emp');
+  if(_rc) _rc.value = _curCycle;
   if(_rd) _rd.value = _curDept;
   if(_re) _re.value = _curEmp;
 
@@ -3547,6 +3594,39 @@ function renderReports(){
           scales:{
             y:{min:2,max:5.3,ticks:{stepSize:.5,callback:v=>v.toFixed(1)},grid:{color:'#f0f0f0'}},
             x:{grid:{display:false}}
+          }
+        }
+      });
+    })();
+
+    // 6) CATEGORY AVG BAR CHART
+    (()=>{
+      if(!catChartLabels.length) return;
+      const ctx = document.getElementById('rpt-cat-chart');
+      if(!ctx) return;
+      const barColors = catChartData.map(v=>v>=4?'#22C55EBB':v>=3?'#3B82F6BB':'#F59E0BBB');
+      window._rptCharts.cat = new Chart(ctx.getContext('2d'),{
+        type:'bar',
+        data:{
+          labels: catChartLabels,
+          datasets:[{
+            label:'คะแนนเฉลี่ย',
+            data: catChartData,
+            backgroundColor: barColors,
+            borderColor: catChartData.map(v=>v>=4?'#16A34A':v>=3?'#2563EB':'#D97706'),
+            borderWidth:1.5, borderRadius:6,
+          }]
+        },
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{display:false},
+            tooltip:{callbacks:{label:c=>`คะแนนเฉลี่ย: ${c.parsed.y.toFixed(2)} / 5`}}
+          },
+          scales:{
+            y:{min:0,max:5,ticks:{stepSize:1,callback:v=>v.toFixed(0)},grid:{color:'#f0f0f0'},
+               title:{display:true,text:'คะแนน (/ 5)',color:'#9CA3AF',font:{size:11}}},
+            x:{grid:{display:false},ticks:{font:{size:11}}}
           }
         }
       });
