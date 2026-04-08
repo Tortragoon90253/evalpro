@@ -331,6 +331,9 @@ tr:hover td{background:var(--gray-50)}
       <div class="nav-item manager-up" data-page="progress" onclick="goTo('progress')">
         <span class="nav-icon">📊</span> ความคืบหน้า
       </div>
+      <div class="nav-item non-hr" data-page="myresults" onclick="goTo('myresults')">
+        <span class="nav-icon">🏅</span> ผลลัพธ์ของฉัน
+      </div>
       <div class="nav-item" data-page="notify" onclick="goTo('notify')">
         <span class="nav-icon">🔔</span> แจ้งเตือน
         <span class="nav-badge" id="notif-badge">3</span>
@@ -554,6 +557,17 @@ tr:hover td{background:var(--gray-50)}
             <tbody id="progress-table-body"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ── MY RESULTS (non-HR) ──────────────────── -->
+      <div id="pg-myresults" class="hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-title">🏅 ผลลัพธ์ของฉัน</div>
+            <div class="page-subtitle" id="myresults-subtitle">สรุปผลการประเมินของคุณ</div>
+          </div>
+        </div>
+        <div id="myresults-content"></div>
       </div>
 
       <!-- ── NOTIFY ─────────────────────────────── -->
@@ -1310,6 +1324,10 @@ function enterApp(){
   document.querySelectorAll('.manager-up').forEach(el => {
     el.style.display = (currentUser.role === 'hr' || currentUser.role === 'manager') ? '' : 'none';
   });
+  // Show/hide non-HR elements (Manager + Employee only)
+  document.querySelectorAll('.non-hr').forEach(el => {
+    el.style.display = currentUser.role !== 'hr' ? '' : 'none';
+  });
   sessionStorage.setItem('ep_session', currentUser.id);
   goTo('dashboard');
 }
@@ -1336,7 +1354,7 @@ function resetAllData(){
 }
 
 // ── Navigation ───────────────────────────────────────────
-const pages = ['dashboard','employees','evaluate','history','reports','progress','notify','cycles','criteria','departments','users','permissions'];
+const pages = ['dashboard','employees','evaluate','history','reports','progress','myresults','notify','cycles','criteria','departments','users','permissions'];
 
 function goTo(page){
   pages.forEach(p => {
@@ -1353,6 +1371,7 @@ function goTo(page){
     history:   renderHistory,
     reports:   renderReports,
     progress:  renderProgress,
+    myresults:    renderMyResults,
     notify:       renderNotify,
     cycles:       renderCycles,
     criteria:     renderCriteria,
@@ -2805,6 +2824,232 @@ function renderHistory(){
       </div>
     </div>`;
   }).join('');
+}
+
+// ── MY RESULTS ───────────────────────────────────────────
+window._myResCharts = window._myResCharts || {};
+function _myResDestroyAll(){
+  Object.values(window._myResCharts).forEach(c=>{ try{ c.destroy(); }catch(e){} });
+  window._myResCharts = {};
+}
+
+function renderMyResults(){
+  if(isHR()){ goTo('dashboard'); return; }
+
+  const me = myEmpRecord();
+  const el = document.getElementById('myresults-content');
+  _myResDestroyAll();
+
+  if(!me){
+    el.innerHTML = '<div class="card" style="text-align:center;color:var(--gray-400);padding:40px">ไม่พบข้อมูลพนักงานของคุณในระบบ</div>';
+    return;
+  }
+
+  const allEvals = DB.get('evals',[]);
+  const myEvals  = allEvals.filter(ev => ev.empId === me.id);
+
+  if(!myEvals.length){
+    el.innerHTML = '<div class="card" style="text-align:center;color:var(--gray-400);padding:40px">ยังไม่มีผลการประเมินของคุณในระบบ</div>';
+    return;
+  }
+
+  const cycles = [...DB.get('cycles',[])].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  function evalCycleId(ev){
+    const c = cycles.find(c=> ev.date >= c.startDate && ev.date <= c.endDate);
+    return c ? c.id : null;
+  }
+  function cycleShort(c){
+    if(!c) return '—';
+    const y = parseInt(c.startDate.slice(0,4))+543;
+    const idx = cycles.filter(x=>x.startDate.slice(0,4)===c.startDate.slice(0,4)).indexOf(c)+1;
+    return `ร.${idx}/${String(y).slice(-2)}`;
+  }
+  function scoreBadge(v){
+    if(v>=4.5) return '<span class="tag tag-green">ดีเยี่ยม</span>';
+    if(v>=4.0) return '<span class="tag tag-blue">ดี</span>';
+    if(v>=3.0) return '<span class="tag tag-gray">ผ่านเกณฑ์</span>';
+    return '<span class="tag tag-red">ต้องพัฒนา</span>';
+  }
+  function avgColor(v){ return v>=4?'var(--green-600)':v>=3?'var(--blue-600)':'var(--yellow-600)'; }
+
+  const activeCycleIds = [...new Set(myEvals.map(ev=>evalCycleId(ev)).filter(Boolean))];
+  const activeCycles   = cycles.filter(c=>activeCycleIds.includes(c.id));
+
+  const sorted = [...myEvals].sort((a,b)=>b.date.localeCompare(a.date));
+  const latestEv = sorted[0];
+  const prevEv   = sorted[1] || null;
+  const delta    = prevEv ? latestEv.avg - prevEv.avg : 0;
+  const overall  = myEvals.reduce((s,e)=>s+e.avg,0)/myEvals.length;
+
+  // Criteria
+  const critSections = DB.get('criteria',[]);
+  const allItems = critSections.flatMap(sec=>(sec.items||[]).map(it=>({key:`c${it.id}`,name:it.name})));
+  const criteriaKeys  = allItems.map(x=>x.key);
+  const criteriaNames = Object.fromEntries(allItems.map(x=>[x.key,x.name]));
+
+  // Criteria averages from all my evals
+  const critBars = criteriaKeys.map(k=>{
+    const vals = myEvals.map(e=>e.scores?.[k]).filter(v=>v>0);
+    const avg  = vals.length ? vals.reduce((s,v)=>s+v,0)/vals.length : 0;
+    if(!avg) return '';
+    const pct = (avg/5*100).toFixed(0);
+    const col = avg>=4?'var(--green-500)':avg>=3?'var(--blue-500)':'var(--yellow-500)';
+    return `<div class="report-bar-row">
+      <div class="report-bar-label" style="font-size:11px;width:120px">${criteriaNames[k]}</div>
+      <div class="report-bar-wrap"><div class="report-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+      <div class="report-bar-val">${avg.toFixed(1)}</div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  // Trend data per cycle
+  const cycleLabels  = activeCycles.map(c=>cycleShort(c));
+  const cycleScores  = activeCycles.map(c=>{
+    const ev = myEvals.find(e=>evalCycleId(e)===c.id);
+    return ev ? parseFloat(ev.avg.toFixed(2)) : null;
+  });
+
+  // Radar data from latest eval
+  const radarLabels = allItems.filter(it=>(latestEv.scores||{})[it.key]>0).map(it=>it.name);
+  const radarData   = allItems.filter(it=>(latestEv.scores||{})[it.key]>0).map(it=>(latestEv.scores||{})[it.key]);
+
+  // Delta display
+  const deltaHTML = delta !== 0
+    ? `<span style="font-size:12px;font-weight:600;color:${delta>0?'var(--green-600)':'var(--red-500)'}">
+        ${delta>0?'▲ +':'▼ '}${Math.abs(delta).toFixed(2)} จากรอบก่อน</span>`
+    : (prevEv ? `<span style="font-size:12px;color:var(--gray-400)">เท่าเดิมจากรอบก่อน</span>` : '');
+
+  // History cards
+  const histCards = sorted.map(ev=>{
+    const scoreColor = ev.avg>=4?'var(--green-600)':ev.avg>=3?'var(--blue-600)':'var(--yellow-600)';
+    const stars = '★'.repeat(Math.round(ev.avg))+'☆'.repeat(5-Math.round(ev.avg));
+    return `<div class="history-card">
+      <div class="flex items-center gap-3" style="flex:1">
+        <div class="avatar" style="background:${avatarColor(ev.empName)};width:44px;height:44px">${avatarText(ev.empName)}</div>
+        <div>
+          <div class="font-bold" style="font-size:15px">${ev.empName}</div>
+          <div class="text-sm text-gray">ประเมินโดย: ${ev.evaluator}</div>
+          <div class="text-sm text-gray">วันที่: ${fmtDate(ev.date)}</div>
+          ${ev.comment?`<div class="text-sm" style="color:var(--gray-600);margin-top:4px">"${ev.comment}"</div>`:''}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+        <div style="text-align:center">
+          <div class="history-score" style="color:${scoreColor}">${ev.avg.toFixed(1)}</div>
+          <div style="font-size:11px;color:var(--gray-400)">/ 5 คะแนน</div>
+          <div style="color:var(--yellow-500);font-size:16px;margin-top:4px">${stars}</div>
+          ${scoreBadge(ev.avg)}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="exportPDF(${ev.id})" style="font-size:12px;padding:5px 10px;white-space:nowrap">
+          🖨️ PDF
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <!-- KPI Cards -->
+    <div class="grid-4 mb-6">
+      <div class="stat-card">
+        <div class="stat-icon">📝</div>
+        <div class="stat-num">${myEvals.length}</div>
+        <div class="stat-label">ครั้งที่ถูกประเมิน</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-num" style="color:${avgColor(overall)}">${overall.toFixed(2)}</div>
+        <div class="stat-label">คะแนนเฉลี่ยทุกรอบ</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🏆</div>
+        <div class="stat-num" style="color:${avgColor(latestEv.avg)}">${latestEv.avg.toFixed(2)}</div>
+        <div class="stat-label">คะแนนล่าสุด ${deltaHTML}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔄</div>
+        <div class="stat-num">${activeCycles.length}</div>
+        <div class="stat-label">รอบประเมินที่เข้าร่วม</div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="grid-2 mb-6" style="grid-template-columns:1fr 1fr">
+      <!-- Trend chart -->
+      <div class="card rpt-chart-card">
+        <div class="section-title" style="font-size:14px;margin-bottom:12px">📈 แนวโน้มคะแนนตามรอบประเมิน</div>
+        <div class="h240"><canvas id="myr-trend-chart"></canvas></div>
+      </div>
+      <!-- Radar chart -->
+      <div class="card rpt-chart-card">
+        <div class="section-title" style="font-size:14px;margin-bottom:12px">🕸 คะแนนรายเกณฑ์ (รอบล่าสุด)</div>
+        <div class="h240"><canvas id="myr-radar-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Criteria bars -->
+    ${critBars ? `<div class="card mb-6">
+      <div class="section-title" style="font-size:14px;margin-bottom:12px">📊 คะแนนเฉลี่ยรายเกณฑ์ (ทุกรอบ)</div>
+      ${critBars}
+    </div>` : ''}
+
+    <!-- History -->
+    <div class="section-title" style="font-size:14px;margin-bottom:12px">📜 ประวัติผลการประเมินทั้งหมด</div>
+    ${histCards}
+  `;
+
+  // ── Draw Trend Chart ──
+  const trendCtx = document.getElementById('myr-trend-chart');
+  if(trendCtx && cycleLabels.length){
+    _myResCharts['trend'] = new Chart(trendCtx.getContext('2d'),{
+      type:'line',
+      data:{
+        labels: cycleLabels,
+        datasets:[{
+          label: me.name,
+          data: cycleScores,
+          borderColor:'#8B5CF6',
+          backgroundColor:'rgba(139,92,246,0.12)',
+          borderWidth:2,
+          pointRadius:5,
+          pointBackgroundColor:'#8B5CF6',
+          fill:true,
+          tension:0.3,
+          spanGaps:true,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          y:{min:0,max:5,ticks:{stepSize:1},grid:{color:'rgba(0,0,0,0.05)'}},
+          x:{grid:{display:false}}
+        }
+      }
+    });
+  }
+
+  // ── Draw Radar Chart ──
+  const radarCtx = document.getElementById('myr-radar-chart');
+  if(radarCtx && radarLabels.length){
+    _myResCharts['radar'] = new Chart(radarCtx.getContext('2d'),{
+      type:'radar',
+      data:{
+        labels: radarLabels,
+        datasets:[{
+          label: me.name,
+          data: radarData,
+          borderColor:'#8B5CF6',
+          backgroundColor:'rgba(139,92,246,0.15)',
+          borderWidth:2,
+          pointRadius:3,
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{r:{min:0,max:5,ticks:{stepSize:1,font:{size:9}},pointLabels:{font:{size:9}}}}
+      }
+    });
+  }
 }
 
 // ── REPORTS ──────────────────────────────────────────────
