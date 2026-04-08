@@ -47,6 +47,7 @@ body{font-family:'Sarabun',sans-serif;background:var(--gray-50);color:var(--gray
 .tag-green{background:var(--green-50);color:var(--green-600)}
 .tag-yellow{background:var(--yellow-50);color:var(--yellow-600)}
 .tag-red{background:var(--red-50);color:var(--red-600)}
+.tag-orange{background:#FFF7ED;color:#C2410C}
 .tag-gray{background:var(--gray-100);color:var(--gray-600)}
 
 /* ─── BUTTONS ────────────────────────────────────────── */
@@ -1156,6 +1157,37 @@ function getDefaultCriteria(){
       {id:50, name:'สื่อสารกับเพื่อนร่วมทีมได้อย่างชัดเจนและสร้างสรรค์'},
       {id:51, name:'ส่งต่องานและข้อมูลให้กะถัดไปได้ครบถ้วน'},
     ]},
+    // ── JC5: Support Operator (6 หมวด × 3 ข้อ = 18 ข้อ) ──────────
+    {id:18, jobClasses:['JC5'], name:'Satisfactory / ความพึงพอใจในงาน',             icon:'✅', items:[
+      {id:52, name:'ความถูกต้องและครบถ้วนของเอกสารที่จัดทำ'},
+      {id:53, name:'ความทันเวลาในการจัดส่งและดำเนินงานเอกสาร'},
+      {id:54, name:'ความพึงพอใจของทีมซ่อมบำรุงต่องานสนับสนุน'},
+    ]},
+    {id:19, jobClasses:['JC5'], name:'Efficiency / ประสิทธิภาพการทำงาน',            icon:'⚡', items:[
+      {id:55, name:'ความรวดเร็วและแม่นยำในการดำเนินงานเอกสาร'},
+      {id:56, name:'ประสิทธิภาพการติดตามสถานะการจัดซื้ออะไหล่'},
+      {id:57, name:'การบริหารจัดการระบบฐานข้อมูลให้ค้นหาได้รวดเร็ว'},
+    ]},
+    {id:20, jobClasses:['JC5'], name:'Discipline / วินัยและการปฏิบัติตามกฎ',        icon:'🏛️', items:[
+      {id:58, name:'การปฏิบัติตามขั้นตอนและมาตรฐานการจัดทำเอกสาร'},
+      {id:59, name:'ความตรงต่อเวลาและความรับผิดชอบต่อหน้าที่'},
+      {id:60, name:'การรักษาความถูกต้องและความปลอดภัยของข้อมูล'},
+    ]},
+    {id:21, jobClasses:['JC5'], name:'Creating Value / การสร้างคุณค่า',              icon:'💎', items:[
+      {id:61, name:'การเสนอแนวทางปรับปรุงระบบเอกสารและขั้นตอนงาน'},
+      {id:62, name:'การช่วยลดต้นทุนผ่านการจัดซื้ออะไหล่อย่างมีประสิทธิภาพ'},
+      {id:63, name:'การพัฒนาทักษะและความรู้ด้านระบบที่เกี่ยวข้องอย่างต่อเนื่อง'},
+    ]},
+    {id:22, jobClasses:['JC5'], name:'Solving Problem / การแก้ไขปัญหา',             icon:'🔍', items:[
+      {id:64, name:'ความสามารถในการแก้ปัญหาเอกสารที่ผิดพลาดหรือขาดหาย'},
+      {id:65, name:'การติดตามและแก้ไขปัญหาการจัดซื้ออะไหล่ที่ล่าช้า'},
+      {id:66, name:'การวิเคราะห์และป้องกันปัญหาซ้ำในกระบวนการงาน'},
+    ]},
+    {id:23, jobClasses:['JC5'], name:'Communication / การสื่อสารและประสานงาน',      icon:'💬', items:[
+      {id:67, name:'ความชัดเจนในการสื่อสารข้อมูลกับทีมซ่อมบำรุงและผู้เกี่ยวข้อง'},
+      {id:68, name:'ทักษะการประสานงานกับ Supplier และหน่วยงานภายนอก'},
+      {id:69, name:'การรายงานสถานะงานอย่างสม่ำเสมอและตรงไปตรงมา'},
+    ]},
   ];
 }
 
@@ -1196,6 +1228,15 @@ function seedData(){
       const crits = DB.get('criteria',[]);
       const needsReset = !crits.length || crits.some(c => !c.jobClasses);
       if(needsReset) DB.set('criteria', getDefaultCriteria());
+    })();
+    // Migration: เพิ่มเกณฑ์ JC5 ถ้ายังไม่มีในระบบ
+    (function(){
+      const crits = DB.get('criteria',[]);
+      const hasJC5 = crits.some(c => (c.jobClasses||[]).includes('JC5'));
+      if(!hasJC5){
+        const jc5Sections = getDefaultCriteria().filter(c => (c.jobClasses||[]).includes('JC5'));
+        DB.set('criteria', [...crits, ...jc5Sections]);
+      }
     })();
     // Migration: ถ้ายังไม่มี cycles (ไม่ seed รอบ default อีกต่อไป)
     if(!DB.get('cycles',[]).length){
@@ -1718,6 +1759,7 @@ const JOB_CLASS_CFG = {
   'JC2': {label:'JC2 — Staff Shift',             shortLabel:'JC2', icon:'⭐', cls:'tag-yellow', role:'manager'},
   'JC3': {label:'JC3 — Leader Shift',            shortLabel:'JC3', icon:'🔷', cls:'tag-green',  role:'manager'},
   'JC4': {label:'JC4 — Maintenance Operator',    shortLabel:'JC4', icon:'🔧', cls:'tag-gray',   role:'employee'},
+  'JC5': {label:'JC5 — Support Operator',        shortLabel:'JC5', icon:'📋', cls:'tag-orange', role:'employee'},
 };
 function jobClassTag(jc){
   const c = JOB_CLASS_CFG[jc];
