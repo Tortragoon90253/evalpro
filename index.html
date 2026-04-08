@@ -4410,7 +4410,7 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
 
   // ── โหลดข้อมูลทั้งหมดจาก Firestore เข้า _mem แล้วเริ่มแอป ──
   setFirebaseStatus('connecting');
-  const FS_KEYS = ['users','employees','evals','criteria','cycles','departments','notifications','seeded'];
+  const FS_KEYS = ['users','employees','evals','criteria','cycles','departments','notifications','seeded','migrated_name_v1'];
   try {
     for (const key of FS_KEYS) {
       const snap = await getDoc(doc(db, 'appData', key));
@@ -4426,6 +4426,42 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
       setFirebaseStatus('error');
       console.error("❌ Firebase โหลดข้อมูลไม่ได้:", err.message);
     }
+  }
+
+  // ── Migration: เปลี่ยนชื่อ สมศักดิ์ วงศ์สุข → ต่อตระกูล รุ่งเรือง (ครั้งเดียว) ──
+  if (window._mem['migrated_name_v1'] !== true) {
+    const OLD = 'สมศักดิ์ วงศ์สุข';
+    const NEW = 'ต่อตระกูล รุ่งเรือง';
+    let changed = false;
+
+    const users = window._mem['users'] || [];
+    const migratedUsers = users.map(u => {
+      if (u.name === OLD) { changed = true; return {...u, name: NEW}; }
+      return u;
+    });
+    if (changed) { window._mem['users'] = migratedUsers; await setDoc(doc(db, 'appData', 'users'), { data: migratedUsers }); }
+
+    changed = false;
+    const employees = window._mem['employees'] || [];
+    const migratedEmps = employees.map(e => {
+      let updated = {...e};
+      if (e.name === OLD)    { updated.name    = NEW; changed = true; }
+      if (e.manager === OLD) { updated.manager = NEW; changed = true; }
+      return updated;
+    });
+    if (changed) { window._mem['employees'] = migratedEmps; await setDoc(doc(db, 'appData', 'employees'), { data: migratedEmps }); }
+
+    changed = false;
+    const evals = window._mem['evals'] || [];
+    const migratedEvals = evals.map(ev => {
+      if (ev.evaluator === OLD) { changed = true; return {...ev, evaluator: NEW}; }
+      return ev;
+    });
+    if (changed) { window._mem['evals'] = migratedEvals; await setDoc(doc(db, 'appData', 'evals'), { data: migratedEvals }); }
+
+    window._mem['migrated_name_v1'] = true;
+    await setDoc(doc(db, 'appData', 'migrated_name_v1'), { data: true });
+    console.log('✅ Migration สำเร็จ: เปลี่ยนชื่อเรียบร้อยแล้ว');
   }
 
   // เริ่มต้นแอป (ไม่ว่า Firestore จะสำเร็จหรือไม่)
