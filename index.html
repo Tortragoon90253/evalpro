@@ -1210,6 +1210,26 @@ function seedData(){
         return !(isSeedCycle && !hasEvals);
       }));
     })();
+    // Migration: แก้ข้อความ notification ที่มีคะแนนเป็นตัวเลข → แสดงชื่อผู้ประเมินแทน
+    (function(){
+      const allEvals = DB.get('evals',[]);
+      let notifs = DB.get('notifications',[]);
+      let changed = false;
+      notifs = notifs.map(n => {
+        // จับรูปแบบ "คะแนน: X.X/5" หรือ "คะแนน: X/5"
+        if(/คะแนน:\s*[\d.]+\/\d+/.test(n.body)){
+          changed = true;
+          // หา eval ที่ตรงกับ notification นี้ (ถ้าหาได้)
+          const ev = allEvals.find(e => n.body.includes(e.empName) || n.body.includes(e.evaluator));
+          const newBody = ev
+            ? `ประเมินโดย: ${ev.evaluator} · ${ev.empName}`
+            : n.body.replace(/\s*คะแนน:\s*[\d.]+\/\d+/, '');
+          return {...n, body: newBody};
+        }
+        return n;
+      });
+      if(changed) DB.set('notifications', notifs);
+    })();
     // Migration: ถ้ายังไม่มี departments
     if(!DB.get('departments',[]).length){
       DB.set('departments',[
@@ -1269,7 +1289,7 @@ function seedData(){
     {id:1, icon:'📝', title:'รอบประเมินประจำปี 2568 เปิดแล้ว!', body:'กรุณาส่งแบบประเมินตนเองภายใน 30 เมษายน 2568', time:'2 ชั่วโมงที่แล้ว', read:false},
     {id:2, icon:'🔄', title:'มีคำขอประเมิน', body:'อนุชา พรหมดี ขอให้คุณส่งแบบประเมินทีมงาน', time:'5 ชั่วโมงที่แล้ว', read:false},
     {id:3, icon:'⚠️', title:'เตือน: เหลือเวลา 5 วัน', body:'มีพนักงาน 1 คนในทีมของคุณยังไม่ส่งแบบประเมิน', time:'เมื่อวาน', read:false},
-    {id:4, icon:'✅', title:'ผลการประเมินพร้อมแล้ว', body:'ผลการประเมินรอบปี 2568 ของคุณพร้อมให้ดูแล้ว คะแนน: 4.1/5', time:'3 วันที่แล้ว', read:true},
+    {id:4, icon:'✅', title:'ผลการประเมินพร้อมแล้ว', body:'ประเมินโดย: กิตติ์ มานะดี · มาลี สุขใจ', time:'3 วันที่แล้ว', read:true},
     {id:5, icon:'📊', title:'รายงานประจำไตรมาสพร้อมแล้ว', body:'รายงานสรุปผลการประเมินพร้อม Export แล้ว', time:'1 สัปดาห์ที่แล้ว', read:true},
   ]);
   DB.set('seeded', true);
