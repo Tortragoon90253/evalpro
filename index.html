@@ -1032,10 +1032,23 @@ tr:hover td{background:var(--gray-50)}
      JAVASCRIPT
 ═══════════════════════════════════════════ -->
 <script>
-// ── DB: localStorage helpers ────────────────────────────
+// ── DB: Firestore-backed storage with in-memory cache ──────
+const _mem = {};
+window._mem = _mem; // expose for Firebase module
+
+async function _syncToFirestore(k, v) {
+  if (!window._firebase) return;
+  const { db, doc, setDoc } = window._firebase;
+  try {
+    await setDoc(doc(db, 'appData', k), { data: v });
+  } catch(e) {
+    console.warn('[DB] sync failed:', k, e.message);
+  }
+}
+
 const DB = {
-  get: (k, def=[]) => { try { return JSON.parse(localStorage.getItem('ep_'+k)) ?? def; } catch{ return def; } },
-  set: (k, v) => localStorage.setItem('ep_'+k, JSON.stringify(v)),
+  get: (k, def=[]) => _mem[k] !== undefined ? _mem[k] : def,
+  set: (k, v)      => { _mem[k] = v; _syncToFirestore(k, v); },
 };
 
 // ── Avatar colors ────────────────────────────────────────
@@ -4327,13 +4340,11 @@ function renderQuickLogin(){
   ).join('');
 }
 
-// ── INIT ──────────────────────────────────────────────────
-seedData();
-
-renderQuickLogin();
-
-// Restore session เมื่อ refresh หน้า
-(function(){
+// ── INIT (เรียกโดย Firebase module หลังโหลดข้อมูลจาก Firestore) ──
+window._initApp = function() {
+  seedData();
+  renderQuickLogin();
+  // Restore session เมื่อ refresh หน้า
   const sid = sessionStorage.getItem('ep_session');
   if(sid){
     const u = DB.get('users',[]).find(u => String(u.id) === sid);
@@ -4342,7 +4353,7 @@ renderQuickLogin();
       enterApp();
     }
   }
-})();
+};
 
 // Enter key on login
 document.getElementById('login-password').addEventListener('keydown', e=>{
@@ -4396,29 +4407,35 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
     label.style.color      = s.color;
   }
 
-  // ── ทดสอบการเชื่อมต่อโดยดึงข้อมูลจาก Firestore ──
-  setFirebaseStatus('connecting');
-  try {
-    await getDocs(collection(db, '_ping'));
-    setFirebaseStatus('connected');
-    console.log("✅ Firebase เชื่อมต่อสำเร็จ! Project:", firebaseConfig.projectId);
-  } catch(err) {
-    // permission-denied = Firestore ตอบกลับมา = เชื่อมต่อได้
-    if (err.code === 'permission-denied') {
-      setFirebaseStatus('connected');
-      console.log("✅ Firebase เชื่อมต่อสำเร็จ! Project:", firebaseConfig.projectId);
-    } else {
-      setFirebaseStatus('error');
-      console.error("❌ Firebase เชื่อมต่อไม่ได้:", err.message);
-    }
-  }
-
   // ── เปิดให้โค้ดส่วนอื่นใช้งานได้ (ผ่าน window) ──
   window._firebase = { app, auth, db,
     signInWithEmailAndPassword, signOut, onAuthStateChanged,
     collection, doc, getDocs, getDoc, setDoc, addDoc,
     updateDoc, deleteDoc, query, where, orderBy, serverTimestamp
   };
+
+  // ── โหลดข้อมูลทั้งหมดจาก Firestore เข้า _mem แล้วเริ่มแอป ──
+  setFirebaseStatus('connecting');
+  const FS_KEYS = ['users','employees','evals','criteria','cycles','departments','notifications','seeded'];
+  try {
+    for (const key of FS_KEYS) {
+      const snap = await getDoc(doc(db, 'appData', key));
+      if (snap.exists()) window._mem[key] = snap.data().data;
+    }
+    setFirebaseStatus('connected');
+    console.log("✅ Firebase เชื่อมต่อและโหลดข้อมูลสำเร็จ! Project:", firebaseConfig.projectId);
+  } catch(err) {
+    if (err.code === 'permission-denied') {
+      setFirebaseStatus('error');
+      console.error("❌ ไม่มีสิทธิ์อ่าน Firestore — กรุณาตั้ง Security Rules ให้อนุญาต appData:", err.message);
+    } else {
+      setFirebaseStatus('error');
+      console.error("❌ Firebase โหลดข้อมูลไม่ได้:", err.message);
+    }
+  }
+
+  // เริ่มต้นแอป (ไม่ว่า Firestore จะสำเร็จหรือไม่)
+  window._initApp();
 </script>
 </body>
 </html>
