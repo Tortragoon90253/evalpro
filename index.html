@@ -411,7 +411,7 @@ tr:hover td{background:var(--gray-50)}
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>พนักงาน</th><th>แผนก</th><th>Self</th><th>360°</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th>
+              <th>พนักงาน</th><th>แผนก</th><th>Self</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th>
             </tr></thead>
             <tbody id="dash-table"></tbody>
           </table>
@@ -1664,7 +1664,6 @@ function renderDashboard(){
         </div></td>
         <td>${emp.dept}</td>
         <td style="text-align:center">—</td>
-        <td style="text-align:center">—</td>
         <td style="text-align:center">${isDone?'✅':'⏳'}</td>
         <td>${isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>'}</td>
         <td style="text-align:center">${ev?`<span class="font-bold" style="color:${ev.avg>=4?'var(--green-600)':ev.avg>=3?'var(--blue-600)':'var(--yellow-600)'}">${ev.avg.toFixed(1)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
@@ -1748,7 +1747,6 @@ function renderDashboard(){
         </div>
       </div></td>
       <td><span class="text-sm">${emp.position?.split('/')[0]?.trim()||'—'}</span></td>
-      <td style="text-align:center">—</td>
       <td style="text-align:center">—</td>
       <td style="text-align:center">${isDone?'✅':'⏳'}</td>
       <td>${isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>'}</td>
