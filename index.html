@@ -399,7 +399,7 @@ tr:hover td{background:var(--gray-50)}
           </div>
           <div class="progress-wrap"><div class="progress-fill" id="dash-progress-bar" style="width:0%"></div></div>
           <div class="flex justify-between text-xs text-gray mt-2">
-            <span>เริ่ม 1 เมษายน 2568</span><span>กำหนดส่ง 30 เมษายน 2568</span>
+            <span id="dash-cycle-start">—</span><span id="dash-cycle-end">—</span>
           </div>
         </div>
 
@@ -1607,6 +1607,8 @@ function renderDashboard(){
     const pct = myEv ? Math.round(myEv.avg/5*100) : 0;
     document.getElementById('dash-progress-pct').textContent = myEv ? myEv.avg.toFixed(1)+' / 5' : '—';
     document.getElementById('dash-progress-bar').style.width = pct+'%';
+    document.getElementById('dash-cycle-start').textContent = activeCycle ? `เริ่ม ${fmtDate(activeCycle.startDate)}` : 'ไม่มีรอบประเมินที่เปิดอยู่';
+    document.getElementById('dash-cycle-end').textContent   = activeCycle ? `กำหนดส่ง ${fmtDate(activeCycle.endDate)}` : '';
 
     const alertEl = document.getElementById('dash-alert');
     const doneNow = me && doneInCycle(me.id);
@@ -1672,6 +1674,8 @@ function renderDashboard(){
 
     document.getElementById('dash-progress-pct').textContent = pct + '%';
     document.getElementById('dash-progress-bar').style.width = pct + '%';
+    document.getElementById('dash-cycle-start').textContent = activeCycle ? `เริ่ม ${fmtDate(activeCycle.startDate)}` : 'ไม่มีรอบประเมินที่เปิดอยู่';
+    document.getElementById('dash-cycle-end').textContent   = activeCycle ? `กำหนดส่ง ${fmtDate(activeCycle.endDate)}` : '';
 
     const alertEl = document.getElementById('dash-alert');
     if(activeCycle && pending > 0){
@@ -1709,7 +1713,7 @@ function renderDashboard(){
   const done    = allEmployees.filter(e => doneInCycle(e.id));
   const pending = allEmployees.length - done.length;
   const allAvg  = done.length
-    ? (done.map(e => latestEval(e.id)?.avg||0).reduce((s,v)=>s+v,0)/done.length).toFixed(1) : '—';
+    ? (done.map(e => latestEvalInCycle(e.id)?.avg||0).reduce((s,v)=>s+v,0)/done.length).toFixed(1) : '—';
   const pct = allEmployees.length ? Math.round(done.length/allEmployees.length*100) : 0;
 
   document.getElementById('dash-stats').innerHTML = `
@@ -1736,6 +1740,8 @@ function renderDashboard(){
 
   document.getElementById('dash-progress-pct').textContent = pct + '%';
   document.getElementById('dash-progress-bar').style.width = pct + '%';
+  document.getElementById('dash-cycle-start').textContent = activeCycle ? `เริ่ม ${fmtDate(activeCycle.startDate)}` : 'ไม่มีรอบประเมินที่เปิดอยู่';
+  document.getElementById('dash-cycle-end').textContent   = activeCycle ? `กำหนดส่ง ${fmtDate(activeCycle.endDate)}` : '';
 
   // per-shift cards (inject after dash-stats if not already there)
   let shiftRow = document.getElementById('dash-shift-row');
