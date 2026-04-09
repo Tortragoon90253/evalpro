@@ -1404,6 +1404,7 @@ function enterApp(){
 }
 
 function doLogout(){
+  if(typeof window._unsubscribeAll === 'function') window._unsubscribeAll();
   currentUser = null;
   sessionStorage.removeItem('ep_session');
   document.getElementById('page-login').style.display = 'flex';
@@ -1459,6 +1460,21 @@ function toggleSidebar(){
   document.getElementById('sidebar').classList.toggle('open');
 }
 
+// ── re-render หน้าที่กำลังเปิดอยู่ (ใช้โดย Firebase onSnapshot) ──
+window._rerenderCurrentPage = function(){
+  const activePage = document.querySelector('.nav-item.active')?.dataset.page;
+  const renders = {
+    dashboard: renderDashboard, employees: renderEmployees,
+    evaluate:  renderEvaluateStep1, history: renderHistory,
+    reports:   renderReports, progress: renderProgress,
+    myresults: renderMyResults, notify: renderNotify,
+    cycles:    renderCycles, criteria: renderCriteria,
+    departments: renderDepartments, users: renderUsers,
+    permissions: renderPermissions,
+  };
+  if(activePage && renders[activePage]) renders[activePage]();
+};
+
 // ── ROLE HELPERS ─────────────────────────────────────────
 function isHR()      { return currentUser.role === 'hr'; }
 function isManager() { return currentUser.role === 'manager'; }
@@ -1500,7 +1516,8 @@ function getEligibleByDepth(allEmps){
   return allEmps.filter(e =>
     e.dept === myDept &&
     e.id   !== myRec.id &&
-    getDepth(e.name, allEmps) > myDepth
+    getDepth(e.name, allEmps) > myDepth &&
+    (e.status||'active') !== 'resigned'
   );
 }
 
@@ -2247,6 +2264,27 @@ function renderEvaluateStep1(){
     document.getElementById('eval-step2').classList.add('hidden');
     return;
   }
+  // ══ LOCK: พนักงานที่ลาออกแล้วไม่สามารถประเมินได้ ══
+  const myRecForGuard = myEmpRecord();
+  if(myRecForGuard && (myRecForGuard.status||'active') === 'resigned'){
+    if(subEl) subEl.textContent = '🚫 ไม่สามารถประเมินได้';
+    banner.className = 'alert mb-4';
+    banner.style.cssText = 'background:var(--gray-100);border:1.5px solid var(--gray-300);color:var(--gray-600)';
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font-size:28px">🚫</span>
+        <div>
+          <div style="font-weight:600;font-size:15px;margin-bottom:2px">ไม่สามารถเข้าถึงการประเมินได้</div>
+          <div style="font-size:13px">พนักงานที่ลาออกแล้วไม่สามารถประเมินหรือถูกประเมินได้</div>
+        </div>
+      </div>`;
+    const sel = document.getElementById('eval-select-emp');
+    sel.innerHTML = '<option value="">— ไม่มีสิทธิ์ประเมิน —</option>';
+    sel.disabled = true;
+    document.getElementById('eval-step2').classList.add('hidden');
+    return;
+  }
+
   banner.style.cssText = '';
 
   // ── helper: ตรวจสอบว่าประเมินแล้วในรอบปัจจุบันหรือยัง ──
@@ -2265,7 +2303,7 @@ function renderEvaluateStep1(){
   let eligible = [];
   let scopeDesc = '';
   if(isHR()){
-    eligible  = allEmps.filter(e => e.id !== myRec?.id && e.jobClass !== 'JC1');
+    eligible  = allEmps.filter(e => e.id !== myRec?.id && e.jobClass !== 'JC1' && (e.status||'active') !== 'resigned');
     scopeDesc = `ประเมินได้ทุกคน (${eligible.length} คน)`;
   } else if(isManager()){
     // แนวทาง A: ประเมินได้ทุกคนในกะเดียวกันที่อยู่ระดับต่ำกว่า
@@ -2273,7 +2311,7 @@ function renderEvaluateStep1(){
     const myDept = myRec?.dept || '';
     scopeDesc = `ประเมินได้ ${eligible.length} คน ใน ${myDept} (ระดับต่ำกว่าทั้งหมด)`;
   } else {
-    eligible = myRec ? [myRec] : [];
+    eligible = (myRec && (myRec.status||'active') !== 'resigned') ? [myRec] : [];
   }
 
   if(subEl){
@@ -4953,7 +4991,7 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
   import { getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc,
-           updateDoc, deleteDoc, query, where, orderBy, serverTimestamp }
+           updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, onSnapshot }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   // ── Firebase Config ──
@@ -4992,28 +5030,52 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
   window._firebase = { app, auth, db,
     signInWithEmailAndPassword, signOut, onAuthStateChanged,
     collection, doc, getDocs, getDoc, setDoc, addDoc,
-    updateDoc, deleteDoc, query, where, orderBy, serverTimestamp
+    updateDoc, deleteDoc, query, where, orderBy, serverTimestamp, onSnapshot
   };
 
-  // ── โหลดข้อมูลทั้งหมดจาก Firestore เข้า _mem แล้วเริ่มแอป ──
+  // ── subscribe Firestore ด้วย onSnapshot เพื่อรับอัปเดตแบบ real-time ──
   setFirebaseStatus('connecting');
   const FS_KEYS = ['users','employees','evals','criteria','cycles','departments','notifications','seeded','migrated_name_v1'];
-  try {
+
+  // เก็บ unsubscribe functions ไว้ล้างตอน logout
+  const _unsubscribers = [];
+  window._unsubscribeAll = () => { _unsubscribers.forEach(u => u()); _unsubscribers.length = 0; };
+
+  let _initDone = false;
+  let _loadedCount = 0;
+
+  // รอให้ทุก key โหลดครั้งแรกก่อนจึงเริ่มแอป
+  await new Promise((resolve) => {
     for (const key of FS_KEYS) {
-      const snap = await getDoc(doc(db, 'appData', key));
-      if (snap.exists()) window._mem[key] = snap.data().data;
+      const unsub = onSnapshot(
+        doc(db, 'appData', key),
+        (snap) => {
+          if (snap.exists()) window._mem[key] = snap.data().data;
+          _loadedCount++;
+          if (_loadedCount === FS_KEYS.length) {
+            setFirebaseStatus('connected');
+            console.log("✅ Firebase เชื่อมต่อและโหลดข้อมูลสำเร็จ! Project:", firebaseConfig.projectId);
+            resolve();
+          }
+          // หลังจากแอปเริ่มแล้ว → re-render หน้าที่กำลังเปิดอยู่
+          if (_initDone && typeof window._rerenderCurrentPage === 'function') {
+            window._rerenderCurrentPage();
+          }
+        },
+        (err) => {
+          if (err.code === 'permission-denied') {
+            console.error("❌ ไม่มีสิทธิ์อ่าน Firestore — กรุณาตั้ง Security Rules ให้อนุญาต appData:", err.message);
+          } else {
+            console.error("❌ Firebase listener error:", err.message);
+          }
+          setFirebaseStatus('error');
+          _loadedCount++;
+          if (_loadedCount === FS_KEYS.length) resolve();
+        }
+      );
+      _unsubscribers.push(unsub);
     }
-    setFirebaseStatus('connected');
-    console.log("✅ Firebase เชื่อมต่อและโหลดข้อมูลสำเร็จ! Project:", firebaseConfig.projectId);
-  } catch(err) {
-    if (err.code === 'permission-denied') {
-      setFirebaseStatus('error');
-      console.error("❌ ไม่มีสิทธิ์อ่าน Firestore — กรุณาตั้ง Security Rules ให้อนุญาต appData:", err.message);
-    } else {
-      setFirebaseStatus('error');
-      console.error("❌ Firebase โหลดข้อมูลไม่ได้:", err.message);
-    }
-  }
+  });
 
   // ── Migration: เปลี่ยนชื่อ สมศักดิ์ วงศ์สุข → ต่อตระกูล รุ่งเรือง (ครั้งเดียว) ──
   if (window._mem['migrated_name_v1'] !== true) {
@@ -5051,7 +5113,8 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
     console.log('✅ Migration สำเร็จ: เปลี่ยนชื่อเรียบร้อยแล้ว');
   }
 
-  // เริ่มต้นแอป (ไม่ว่า Firestore จะสำเร็จหรือไม่)
+  // เริ่มต้นแอป และเปิดใช้ real-time re-render
+  _initDone = true;
   window._initApp();
 </script>
 </body>
