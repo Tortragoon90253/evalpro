@@ -3926,8 +3926,13 @@ function renderCompare(){
   const cmpCycles   = cycles.filter(c=>cmpCycleIds.includes(c.id));
   const cmpLabels   = cmpCycles.map(c=>cycleShort(c));
 
-  const allItems = critSections.flatMap(sec=>(sec.items||[]).map(it=>({key:`c${it.id}`,name:it.name})));
-  const radarItems = allItems.slice(0,8);
+  // Determine dominant Job Class among selected employees for section filtering
+  const jcFreq = {};
+  selEmps.forEach(e=>{ jcFreq[e.jobClass]=(jcFreq[e.jobClass]||0)+1; });
+  const dominantJC = Object.entries(jcFreq).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const radarSections = dominantJC
+    ? critSections.filter(s=>(s.jobClasses||[]).includes(dominantJC))
+    : critSections;
 
   // destroy old compare charts
   ['cmpBar','cmpRadar'].forEach(k=>{
@@ -3969,17 +3974,22 @@ function renderCompare(){
     });
   }
 
-  // ── Radar Chart (criteria average across all evals) ──
+  // ── Radar Chart (section/category average across all evals) ──
   const radarCtx = document.getElementById('rpt-cmp-radar-chart');
-  if(radarCtx && radarItems.length){
+  if(radarCtx && radarSections.length){
+    const radarLabels = radarSections.map(s=>{
+      const parts = s.name.split('/');
+      return (parts[1]||parts[0]).trim();
+    });
     window._rptCharts.cmpRadar = new Chart(radarCtx.getContext('2d'),{
       type:'radar',
       data:{
-        labels: radarItems.map(x=>x.name.split('/')[0].trim().slice(0,12)),
+        labels: radarLabels,
         datasets: selEmps.map((emp,i)=>{
           const empEvals = allEvals.filter(e=>e.empId===emp.id);
-          const data = radarItems.map(item=>{
-            const vals = empEvals.map(e=>e.scores?.[item.key]).filter(v=>v>0);
+          const data = radarSections.map(sec=>{
+            const keys = (sec.items||[]).map(it=>`c${it.id}`);
+            const vals = empEvals.flatMap(ev=>keys.map(k=>ev.scores?.[k]).filter(v=>v>0));
             return vals.length ? parseFloat((vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2)) : 0;
           });
           return { label:emp.name.split(' ')[0], data, borderColor:COLORS[i], backgroundColor:COLORS[i]+'33', borderWidth:2, pointRadius:3 };
