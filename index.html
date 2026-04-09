@@ -411,7 +411,7 @@ tr:hover td{background:var(--gray-50)}
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>พนักงาน</th><th>แผนก</th><th>Self</th><th>360°</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th>
+              <th>พนักงาน</th><th>แผนก</th><th>Self</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th>
             </tr></thead>
             <tbody id="dash-table"></tbody>
           </table>
@@ -1543,6 +1543,34 @@ function renderDashboard(){
     return allEvals.filter(ev => ev.empId === empId).sort((a,b)=>b.date.localeCompare(a.date))[0] || null;
   }
 
+  // helper: eval ล่าสุดเฉพาะรอบปัจจุบัน
+  function latestEvalInCycle(empId){
+    if(!activeCycle) return latestEval(empId);
+    return allEvals
+      .filter(ev => ev.empId === empId &&
+        ev.date >= activeCycle.startDate &&
+        ev.date <= activeCycle.endDate)
+      .sort((a,b) => b.date.localeCompare(a.date))[0] || null;
+  }
+
+  // helper: ตรวจว่ามี self-eval ในรอบปัจจุบัน (evaluator === ชื่อพนักงาน)
+  function selfEvalDone(empId, empName){
+    if(!activeCycle) return false;
+    return allEvals.some(ev =>
+      ev.empId === empId && ev.evaluator === empName &&
+      ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate
+    );
+  }
+
+  // helper: ตรวจว่ามีหัวหน้าประเมินในรอบปัจจุบัน (evaluator !== ชื่อพนักงาน)
+  function supervisorEvalDone(empId, empName){
+    if(!activeCycle) return false;
+    return allEvals.some(ev =>
+      ev.empId === empId && ev.evaluator !== empName &&
+      ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate
+    );
+  }
+
   // Greeting + cycle
   document.getElementById('dash-greeting').textContent = `สวัสดี, ${currentUser.name} 👋`;
   const cycleEl = document.getElementById('dash-cycle');
@@ -1551,7 +1579,7 @@ function renderDashboard(){
   // ── EMPLOYEE (Maintenance Operator) ──────────────────
   if(isEmployee()){
     const me     = myEmpRecord();
-    const myEv   = me ? latestEval(me.id) : null;
+    const myEv   = me ? latestEvalInCycle(me.id) : null;
     const deptCfg = allDepts.find(d => d.name === me?.dept);
 
     document.getElementById('dash-stats').innerHTML = `
@@ -1568,12 +1596,12 @@ function renderDashboard(){
       <div class="stat-card">
         <div class="stat-icon">⭐</div>
         <div class="stat-num" style="color:var(--blue-600)">${myEv?myEv.avg.toFixed(1):'—'}</div>
-        <div class="stat-label">คะแนนล่าสุด / 5</div>
+        <div class="stat-label">คะแนนรอบนี้ / 5</div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📅</div>
         <div class="stat-num" style="font-size:16px">${myEv?fmtDate(myEv.date):'ยังไม่มี'}</div>
-        <div class="stat-label">ประเมินล่าสุด</div>
+        <div class="stat-label">ประเมินล่าสุด (รอบนี้)</div>
       </div>`;
 
     const pct = myEv ? Math.round(myEv.avg/5*100) : 0;
@@ -1587,18 +1615,19 @@ function renderDashboard(){
       alertEl.textContent=`⚠️ คุณยังไม่ได้รับการประเมินในรอบ "${activeCycle.name}" — สิ้นสุด ${fmtDate(activeCycle.endDate)}`;
     } else { alertEl.style.display='none'; }
 
-    document.getElementById('dash-table').innerHTML = myEv
+    const doneInThisCycle = me && doneInCycle(me.id);
+    document.getElementById('dash-table').innerHTML = doneInThisCycle
       ? `<tr>
           <td><div class="user-cell">
             <div class="avatar" style="background:${deptCfg?.color||avatarColor(currentUser.name)}">${avatarText(currentUser.name)}</div>
             <div><div class="font-semibold">${currentUser.name}</div><div class="text-xs text-gray">${me?.dept||''}</div></div>
           </div></td>
           <td>${me?.dept||'—'}</td>
-          <td style="text-align:center">—</td><td style="text-align:center">—</td><td style="text-align:center">✅</td>
+          <td style="text-align:center">—</td><td style="text-align:center">✅</td>
           <td><span class="tag tag-green">✅ เสร็จสิ้น</span></td>
           <td style="text-align:center"><span class="font-bold" style="color:${myEv.avg>=4?'var(--green-600)':'var(--blue-600)'}">${myEv.avg.toFixed(1)}</span></td>
         </tr>`
-      : `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--gray-400)">ยังไม่มีผลการประเมิน</td></tr>`;
+      : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">ยังไม่มีผลการประเมินในรอบนี้</td></tr>`;
     return;
   }
 
@@ -1651,8 +1680,11 @@ function renderDashboard(){
     } else { alertEl.style.display='none'; }
 
     document.getElementById('dash-table').innerHTML = subs.length ? subs.map(emp => {
-      const ev      = latestEval(emp.id);
-      const isDone  = doneInCycle(emp.id);
+      const ev           = latestEvalInCycle(emp.id);
+      const isDone       = doneInCycle(emp.id);
+      const isSelf       = selfEvalDone(emp.id, emp.name);
+      const isSupervisor = supervisorEvalDone(emp.id, emp.name);
+      const canSelfEval  = ['JC2','JC3','JC4','JC5'].includes(emp.jobClass);
       const lvlIcon = emp.manager === currentUser.name ? '└─' : '&nbsp;&nbsp;&nbsp;└─';
       return `<tr>
         <td><div class="user-cell">
@@ -1663,14 +1695,13 @@ function renderDashboard(){
           </div>
         </div></td>
         <td>${emp.dept}</td>
-        <td style="text-align:center">—</td>
-        <td style="text-align:center">—</td>
-        <td style="text-align:center">${isDone?'✅':'⏳'}</td>
+        <td style="text-align:center">${canSelfEval?(isSelf?'✅':'⏳'):'—'}</td>
+        <td style="text-align:center">${isSupervisor?'✅':'⏳'}</td>
         <td>${isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>'}</td>
         <td style="text-align:center">${ev?`<span class="font-bold" style="color:${ev.avg>=4?'var(--green-600)':ev.avg>=3?'var(--blue-600)':'var(--yellow-600)'}">${ev.avg.toFixed(1)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
       </tr>`;
     }).join('')
-    : `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--gray-400)">ไม่มีพนักงานในสายงานของคุณ</td></tr>`;
+    : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">ไม่มีพนักงานในสายงานของคุณ</td></tr>`;
     return;
   }
 
@@ -1737,8 +1768,11 @@ function renderDashboard(){
   } else { alertEl.style.display='none'; }
 
   document.getElementById('dash-table').innerHTML = allEmployees.map(emp => {
-    const ev     = latestEval(emp.id);
-    const isDone = doneInCycle(emp.id);
+    const ev           = latestEvalInCycle(emp.id);
+    const isDone       = doneInCycle(emp.id);
+    const isSelf       = selfEvalDone(emp.id, emp.name);
+    const isSupervisor = supervisorEvalDone(emp.id, emp.name);
+    const canSelfEval  = ['JC2','JC3','JC4','JC5'].includes(emp.jobClass);
     const dept   = allDepts.find(d => d.name === emp.dept);
     return `<tr>
       <td><div class="user-cell">
@@ -1748,10 +1782,9 @@ function renderDashboard(){
         </div>
       </div></td>
       <td><span class="text-sm">${emp.position?.split('/')[0]?.trim()||'—'}</span></td>
-      <td style="text-align:center">—</td>
-      <td style="text-align:center">—</td>
-      <td style="text-align:center">${isDone?'✅':'⏳'}</td>
-      <td>${isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>'}</td>
+      <td style="text-align:center">${canSelfEval?(isSelf?'✅':'⏳'):'—'}</td>
+      <td style="text-align:center">${emp.jobClass==='JC1'?'—':(isSupervisor?'✅':'⏳')}</td>
+      <td>${emp.jobClass==='JC1'?'<span class="tag tag-gray" style="font-size:11px">—</span>':(isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>')}</td>
       <td style="text-align:center">${ev?`<span class="font-bold" style="color:${ev.avg>=4?'var(--green-600)':ev.avg>=3?'var(--blue-600)':'var(--yellow-600)'}">${ev.avg.toFixed(1)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
     </tr>`;
   }).join('');
@@ -2306,10 +2339,11 @@ function renderEvaluateStep1(){
     eligible  = allEmps.filter(e => e.id !== myRec?.id && e.jobClass !== 'JC1' && (e.status||'active') !== 'resigned');
     scopeDesc = `ประเมินได้ทุกคน (${eligible.length} คน)`;
   } else if(isManager()){
-    // แนวทาง A: ประเมินได้ทุกคนในกะเดียวกันที่อยู่ระดับต่ำกว่า
-    eligible  = getEligibleByDepth(allEmps);
+    // ประเมินได้ทุกคนในกะเดียวกันที่อยู่ระดับต่ำกว่า + ตัวเอง
+    const subs = getEligibleByDepth(allEmps);
+    eligible = myRec ? [myRec, ...subs] : subs;
     const myDept = myRec?.dept || '';
-    scopeDesc = `ประเมินได้ ${eligible.length} คน ใน ${myDept} (ระดับต่ำกว่าทั้งหมด)`;
+    scopeDesc = `ประเมินได้ ${eligible.length} คน ใน ${myDept} (รวมตัวเอง)`;
   } else {
     eligible = (myRec && (myRec.status||'active') !== 'resigned') ? [myRec] : [];
   }
@@ -3397,6 +3431,7 @@ function renderReports(){
       ${cycleScores}
       <td style="text-align:center">${d!==null?trendChip(d):'<span style="color:#ccc;font-size:11px">—</span>'}</td>
       <td>${l?scoreBadge(l.avg):'—'}</td>
+      <td class="text-sm" style="color:var(--gray-600);max-width:220px;white-space:normal">${l?.comment?`"${l.comment}"`:'<span style="color:var(--gray-300)">—</span>'}</td>
     </tr>`;
   }).join('');
 
@@ -3573,6 +3608,7 @@ function renderReports(){
             ${cycleThHeaders}
             <th style="text-align:center">เปลี่ยนแปลง</th>
             <th>ระดับล่าสุด</th>
+            <th>ความเห็น</th>
           </tr></thead>
           <tbody>${tableRows}</tbody>
         </table>
@@ -3702,12 +3738,26 @@ function renderReports(){
       const radarCycles = activeCycles.slice(-3);
       const radarColors = ['#3B82F666','#22C55E66','#F59E0B66'];
       const radarBorder = ['#3B82F6','#22C55E','#F59E0B'];
-      const radarItems  = allItems.slice(0,8); // max 8 criteria
-      if(!radarItems.length) return;
+
+      // กรอง criteria sections ตาม jobClass ของพนักงานที่เลือก (ถ้าเลือกเฉพาะคน)
+      // ถ้าไม่ได้เลือก ใช้ jobClass ที่พบมากที่สุดในชุดข้อมูล
+      const selectedEmpId = _curEmp !== 'all' ? parseInt(_curEmp) : null;
+      const selectedEmp   = selectedEmpId ? employees.find(e=>e.id===selectedEmpId) : null;
+      const dominantJC    = selectedEmp?.jobClass || (() => {
+        const freq = {}; empList.forEach(e=>{ freq[e.jobClass]=(freq[e.jobClass]||0)+1; });
+        return Object.entries(freq).sort((a,b)=>b[1]-a[1])[0]?.[0];
+      })();
+      const radarSections = dominantJC
+        ? critSections.filter(s=>(s.jobClasses||[]).includes(dominantJC))
+        : critSections;
+      if(!radarSections.length) return;
+
+      // คำนวณ avg รายหมวด (section avg) แทนรายข้อ
       const datasets = radarCycles.map((cyc,i)=>{
         const cycEvs = evals.filter(ev=>evalCycleId(ev)===cyc.id);
-        const data = radarItems.map(item=>{
-          const vals = cycEvs.map(e=>e.scores?.[item.key]).filter(v=>v>0);
+        const data = radarSections.map(sec=>{
+          const keys = (sec.items||[]).map(it=>`c${it.id}`);
+          const vals = cycEvs.flatMap(ev=>keys.map(k=>ev.scores?.[k]).filter(v=>v>0));
           return vals.length ? parseFloat((vals.reduce((s,v)=>s+v,0)/vals.length).toFixed(2)) : 0;
         });
         return {
@@ -3717,11 +3767,16 @@ function renderReports(){
           borderWidth:2, pointRadius:3,
         };
       });
+      const radarLabels = radarSections.map(s=>{
+        // แสดงชื่อภาษาไทย (ส่วนหลัง '/') หรือภาษาอังกฤษถ้าไม่มี '/'
+        const parts = s.name.split('/');
+        return (parts[1]||parts[0]).trim();
+      });
       const ctx = document.getElementById('rpt-radar-chart');
       if(!ctx) return;
       window._rptCharts.radar = new Chart(ctx.getContext('2d'),{
         type:'radar',
-        data:{ labels: radarItems.map(x=>x.name.split('/')[0].trim().slice(0,12)), datasets },
+        data:{ labels: radarLabels, datasets },
         options:{
           responsive:true, maintainAspectRatio:false,
           plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:8,font:{size:11}}}},
