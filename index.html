@@ -1557,6 +1557,10 @@ function renderDashboard(){
   const allEvals     = DB.get('evals',[]);
   const allDepts     = DB.get('departments',[]);
   const activeCycle  = getActiveCycle();
+  const allCycles    = DB.get('cycles',[]);
+  const latestClosedCycle = allCycles
+    .filter(c => c.status === 'closed')
+    .sort((a,b) => b.endDate.localeCompare(a.endDate))[0] || null;
 
   // helper: ตรวจสอบว่าประเมินครบทั้ง SELF + หัวหน้าในรอบ active หรือไม่
   function doneInCycle(empId){
@@ -1583,6 +1587,16 @@ function renderDashboard(){
       .sort((a,b) => b.date.localeCompare(a.date))[0] || null;
   }
 
+  // helper: eval ล่าสุดในรอบที่ระบุ (ใช้สำหรับแสดงผลจากรอบที่ปิดแล้ว)
+  function latestEvalInSpecificCycle(empId, cycle){
+    if(!cycle) return null;
+    return allEvals
+      .filter(ev => ev.empId === empId &&
+        ev.date >= cycle.startDate &&
+        ev.date <= cycle.endDate)
+      .sort((a,b) => b.date.localeCompare(a.date))[0] || null;
+  }
+
   // helper: ตรวจว่ามี self-eval ในรอบปัจจุบัน (evaluator === ชื่อพนักงาน)
   function selfEvalDone(empId, empName){
     if(!activeCycle) return false;
@@ -1601,20 +1615,21 @@ function renderDashboard(){
     );
   }
 
-  // helper: คำนวณคะแนนรวม Weighted (SELF × W1 + หัวหน้า × W2) ในรอบปัจจุบัน
+  // helper: คำนวณคะแนนรวม Weighted (SELF × W1 + หัวหน้า × W2) ในรอบที่ระบุ
   // คืน null ถ้าประเมินยังไม่ครบทั้ง 2 ฝ่าย
-  function combinedScoreInCycle(empId, empName){
-    if(!activeCycle) return null;
+  function combinedScoreInCycle(empId, empName, cycle){
+    const c = (cycle !== undefined) ? cycle : activeCycle;
+    if(!c) return null;
     const settings = DB.get('settings', {});
     const selfW = parseFloat(settings.selfWeight ?? 30);
     const supW  = parseFloat(settings.supWeight  ?? 70);
     const selfEv = allEvals.find(ev =>
       ev.empId === empId && ev.evaluator === empName &&
-      ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate
+      ev.date >= c.startDate && ev.date <= c.endDate
     );
     const supEv = allEvals.find(ev =>
       ev.empId === empId && ev.evaluator !== empName &&
-      ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate
+      ev.date >= c.startDate && ev.date <= c.endDate
     );
     if(selfEv && supEv){
       const total = selfW + supW;
@@ -1631,9 +1646,13 @@ function renderDashboard(){
   // ── EMPLOYEE (Maintenance Operator) ──────────────────
   if(isEmployee()){
     const me      = myEmpRecord();
-    const myEv    = me ? latestEvalInCycle(me.id) : null;
-    const cScore  = me ? combinedScoreInCycle(me.id, me.name) : null;
+    // แสดงคะแนนเฉพาะจากรอบที่ปิดแล้ว — ยังไม่ปิดรอบยังไม่เห็นผล
+    const cScore  = me ? combinedScoreInCycle(me.id, me.name, latestClosedCycle) : null;
+    const myEv    = me ? latestEvalInSpecificCycle(me.id, latestClosedCycle) : null;
     const deptCfg = allDepts.find(d => d.name === me?.dept);
+    const scoreDisplay = activeCycle
+      ? '<span style="font-size:12px;color:var(--gray-400)">รอปิดรอบ</span>'
+      : (cScore!==null ? cScore.toFixed(2) : '—');
 
     document.getElementById('dash-stats').innerHTML = `
       <div class="stat-card">
@@ -1648,20 +1667,20 @@ function renderDashboard(){
       </div>
       <div class="stat-card">
         <div class="stat-icon">⭐</div>
-        <div class="stat-num" style="color:var(--blue-600)">${cScore!==null?cScore.toFixed(2):'—'}</div>
-        <div class="stat-label">คะแนนรอบนี้ / 5</div>
+        <div class="stat-num" style="color:var(--blue-600)">${scoreDisplay}</div>
+        <div class="stat-label">คะแนนรอบล่าสุด / 5</div>
       </div>
       <div class="stat-card">
         <div class="stat-icon">📅</div>
         <div class="stat-num" style="font-size:16px">${myEv?fmtDate(myEv.date):'ยังไม่มี'}</div>
-        <div class="stat-label">ประเมินล่าสุด (รอบนี้)</div>
+        <div class="stat-label">ประเมินล่าสุด (รอบที่ปิดแล้ว)</div>
       </div>`;
 
-    const pct = cScore !== null ? Math.round(cScore/5*100) : 0;
-    document.getElementById('dash-progress-pct').textContent = cScore !== null ? cScore.toFixed(2)+' / 5' : '—';
+    const pct = (!activeCycle && cScore !== null) ? Math.round(cScore/5*100) : 0;
+    document.getElementById('dash-progress-pct').textContent = activeCycle ? 'รอปิดรอบ' : (cScore !== null ? cScore.toFixed(2)+' / 5' : '—');
     document.getElementById('dash-progress-bar').style.width = pct+'%';
-    document.getElementById('dash-cycle-start').textContent = activeCycle ? `เริ่ม ${fmtDate(activeCycle.startDate)}` : 'ไม่มีรอบประเมินที่เปิดอยู่';
-    document.getElementById('dash-cycle-end').textContent   = activeCycle ? `กำหนดส่ง ${fmtDate(activeCycle.endDate)}` : '';
+    document.getElementById('dash-cycle-start').textContent = activeCycle ? `เริ่ม ${fmtDate(activeCycle.startDate)}` : (latestClosedCycle ? `ปิดรอบ: ${latestClosedCycle.name}` : 'ไม่มีรอบประเมินที่เปิดอยู่');
+    document.getElementById('dash-cycle-end').textContent   = activeCycle ? `กำหนดส่ง ${fmtDate(activeCycle.endDate)}` : (latestClosedCycle ? `${fmtDate(latestClosedCycle.endDate)}` : '');
 
     const alertEl = document.getElementById('dash-alert');
     const doneNow = me && doneInCycle(me.id);
@@ -1671,6 +1690,9 @@ function renderDashboard(){
     } else { alertEl.style.display='none'; }
 
     const doneInThisCycle = me && doneInCycle(me.id);
+    const tableScoreCell = activeCycle
+      ? '<span style="color:var(--gray-400);font-size:12px">รอปิดรอบ</span>'
+      : (cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>');
     document.getElementById('dash-table').innerHTML = doneInThisCycle
       ? `<tr>
           <td><div class="user-cell">
@@ -1680,7 +1702,7 @@ function renderDashboard(){
           <td>${me?.dept||'—'}</td>
           <td style="text-align:center">—</td><td style="text-align:center">✅</td>
           <td><span class="tag tag-green">✅ เสร็จสิ้น</span></td>
-          <td style="text-align:center">${cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
+          <td style="text-align:center">${tableScoreCell}</td>
         </tr>`
       : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">ยังไม่มีผลการประเมินในรอบนี้</td></tr>`;
     return;
@@ -1695,9 +1717,11 @@ function renderDashboard(){
     const subs    = getEligibleByDepth(allEmployees);
     const done    = subs.filter(e => doneInCycle(e.id));
     const pending = subs.length - done.length;
-    const scoredSubs = subs.filter(e => combinedScoreInCycle(e.id, e.name) !== null);
-    const avg = scoredSubs.length
-      ? (scoredSubs.map(e => combinedScoreInCycle(e.id, e.name)).reduce((s,v)=>s+v,0)/scoredSubs.length).toFixed(1) : '—';
+    // คะแนนเฉลี่ยคำนวณจากรอบที่ปิดแล้วเท่านั้น — ยังไม่ปิดรอบยังไม่เห็นผล
+    const scoredSubs = subs.filter(e => combinedScoreInCycle(e.id, e.name, latestClosedCycle) !== null);
+    const closedAvg = scoredSubs.length
+      ? (scoredSubs.map(e => combinedScoreInCycle(e.id, e.name, latestClosedCycle)).reduce((s,v)=>s+v,0)/scoredSubs.length).toFixed(1) : '—';
+    const avg = activeCycle ? '<span style="font-size:12px;color:var(--gray-400)">รอปิดรอบ</span>' : closedAvg;
     const pct = subs.length ? Math.round(done.length/subs.length*100) : 0;
 
     document.getElementById('dash-stats').innerHTML = `
@@ -1738,7 +1762,10 @@ function renderDashboard(){
       const isSelf       = selfEvalDone(emp.id, emp.name);
       const isSupervisor = supervisorEvalDone(emp.id, emp.name);
       const canSelfEval  = ['JC2','JC3','JC4','JC5'].includes(emp.jobClass);
-      const cScore       = combinedScoreInCycle(emp.id, emp.name);
+      const cScore       = combinedScoreInCycle(emp.id, emp.name, latestClosedCycle);
+      const scoreCell    = activeCycle
+        ? '<span style="color:var(--gray-400);font-size:12px">รอปิดรอบ</span>'
+        : (cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>');
       const lvlIcon = emp.manager === currentUser.name ? '└─' : '&nbsp;&nbsp;&nbsp;└─';
       return `<tr>
         <td><div class="user-cell">
@@ -1752,7 +1779,7 @@ function renderDashboard(){
         <td style="text-align:center">${canSelfEval?(isSelf?'✅':'⏳'):'—'}</td>
         <td style="text-align:center">${isSupervisor?'✅':'⏳'}</td>
         <td>${isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>'}</td>
-        <td style="text-align:center">${cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
+        <td style="text-align:center">${scoreCell}</td>
       </tr>`;
     }).join('')
     : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">ไม่มีพนักงานในสายงานของคุณ</td></tr>`;
