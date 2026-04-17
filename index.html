@@ -1543,14 +1543,14 @@ function renderDashboard(){
   const allDepts     = DB.get('departments',[]);
   const activeCycle  = getActiveCycle();
 
-  // helper: ตรวจสอบว่าประเมินแล้วในรอบ active หรือไม่
+  // helper: ตรวจสอบว่าประเมินครบทั้ง SELF + หัวหน้าในรอบ active หรือไม่
   function doneInCycle(empId){
-    if(!activeCycle) return allEvals.some(ev => ev.empId === empId);
-    return allEvals.some(ev =>
-      ev.empId === empId &&
-      ev.date >= activeCycle.startDate &&
-      ev.date <= activeCycle.endDate
-    );
+    if(!activeCycle) return false;
+    const emp = allEmployees.find(e => e.id === empId);
+    if(!emp) return false;
+    const canSelfEval = ['JC2','JC3','JC4','JC5'].includes(emp.jobClass);
+    if(!canSelfEval) return false; // JC1 ไม่มีเกณฑ์ประเมิน
+    return selfEvalDone(empId, emp.name) && supervisorEvalDone(empId, emp.name);
   }
 
   // helper: คะแนนล่าสุดของพนักงาน
@@ -1952,7 +1952,7 @@ function renderEmployees(){
       <div class="emp-card-body">
         <div class="emp-card-row"><span>${dept?.icon||'🏢'}</span><span>${emp.dept}</span></div>
         ${emp.manager&&emp.manager!=='-'?`<div class="emp-card-row"><span>👤</span><span>หัวหน้า: ${emp.manager}</span></div>`:''}
-        ${emp.startdate?`<div class="emp-card-row"><span>📅</span><span>เริ่ม ${emp.startdate}</span></div>`:''}
+        ${emp.startdate?`<div class="emp-card-row"><span>📅</span><span>เริ่ม ${fmtDate(emp.startdate)} (${workDuration(emp.startdate)})</span></div>`:''}
         ${emp.jobClass?`<div class="emp-card-row"><span>🏷️</span><span>${(JOB_CLASS_CFG[emp.jobClass]||{}).label||emp.jobClass}</span></div>`:''}
       </div>
       <div class="emp-card-footer">
@@ -1975,7 +1975,10 @@ function renderEmployees(){
     return `<tr>
       <td><div class="user-cell">
         <div class="avatar" style="background:${dept?.color||avatarColor(emp.name)}">${avatarText(emp.name)}</div>
-        <div><div class="font-semibold">${emp.name}</div><div class="text-xs text-gray">${emp.startdate||''}</div></div>
+        <div>
+          <div class="font-semibold">${emp.name}</div>
+          <div class="text-xs text-gray">${emp.startdate?`📅 ${fmtDate(emp.startdate)} · ${workDuration(emp.startdate)}`:'—'}</div>
+        </div>
       </div></td>
       <td><div class="font-medium">${emp.position}</div><div><span class="tag tag-gray" style="font-size:11px">${dept?.icon||'🏢'} ${emp.dept}</span></div></td>
       <td>${jobClassTag(emp.jobClass)}</td>
@@ -4644,6 +4647,19 @@ function fmtDate(d){
   if(!d) return '—';
   const [y,m,day] = d.split('-');
   return `${parseInt(day)} ${['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][parseInt(m)-1]} ${parseInt(y)+543}`;
+}
+
+function workDuration(startdate){
+  if(!startdate) return '';
+  const start = new Date(startdate);
+  const now   = new Date();
+  let years  = now.getFullYear() - start.getFullYear();
+  let months = now.getMonth()    - start.getMonth();
+  if(months < 0){ years--; months += 12; }
+  if(years > 0 && months > 0) return `${years} ปี ${months} เดือน`;
+  if(years > 0)  return `${years} ปี`;
+  if(months > 0) return `${months} เดือน`;
+  return 'น้อยกว่า 1 เดือน';
 }
 
 function daysLeft(endDate){
