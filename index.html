@@ -355,6 +355,9 @@ tr:hover td{background:var(--gray-50)}
       <div class="nav-item hr-only" data-page="permissions" onclick="goTo('permissions')">
         <span class="nav-icon">🛡️</span> สิทธิ์และบทบาท
       </div>
+      <div class="nav-item hr-only" data-page="settings" onclick="goTo('settings')">
+        <span class="nav-icon">⚙️</span> ตั้งค่า
+      </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -658,6 +661,17 @@ tr:hover td{background:var(--gray-50)}
             <tbody id="users-table"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ── SETTINGS (HR Only) ─────────────────────── -->
+      <div id="pg-settings" class="hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-title">⚙️ ตั้งค่าระบบ</div>
+            <div class="page-subtitle">กำหนดค่าพารามิเตอร์การคำนวณผลการประเมิน</div>
+          </div>
+        </div>
+        <div id="settings-content"></div>
       </div>
 
       <!-- ── PERMISSIONS (HR Only) ───────────────────── -->
@@ -1426,7 +1440,7 @@ function resetAllData(){
 }
 
 // ── Navigation ───────────────────────────────────────────
-const pages = ['dashboard','employees','evaluate','history','reports','progress','myresults','notify','cycles','criteria','departments','users','permissions'];
+const pages = ['dashboard','employees','evaluate','history','reports','progress','myresults','notify','cycles','criteria','departments','users','permissions','settings'];
 
 function goTo(page){
   pages.forEach(p => {
@@ -1450,6 +1464,7 @@ function goTo(page){
     departments:  renderDepartments,
     users:        renderUsers,
     permissions:  renderPermissions,
+    settings:     renderSettings,
   };
   if(renders[page]) renders[page]();
   // Close sidebar on mobile
@@ -1470,7 +1485,7 @@ window._rerenderCurrentPage = function(){
     myresults: renderMyResults, notify: renderNotify,
     cycles:    renderCycles, criteria: renderCriteria,
     departments: renderDepartments, users: renderUsers,
-    permissions: renderPermissions,
+    permissions: renderPermissions, settings: renderSettings,
   };
   if(activePage && renders[activePage]) renders[activePage]();
 };
@@ -1571,6 +1586,28 @@ function renderDashboard(){
     );
   }
 
+  // helper: คำนวณคะแนนรวม Weighted (SELF × W1 + หัวหน้า × W2) ในรอบปัจจุบัน
+  // คืน null ถ้าประเมินยังไม่ครบทั้ง 2 ฝ่าย
+  function combinedScoreInCycle(empId, empName){
+    if(!activeCycle) return null;
+    const settings = DB.get('settings', {});
+    const selfW = parseFloat(settings.selfWeight ?? 30);
+    const supW  = parseFloat(settings.supWeight  ?? 70);
+    const selfEv = allEvals.find(ev =>
+      ev.empId === empId && ev.evaluator === empName &&
+      ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate
+    );
+    const supEv = allEvals.find(ev =>
+      ev.empId === empId && ev.evaluator !== empName &&
+      ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate
+    );
+    if(selfEv && supEv){
+      const total = selfW + supW;
+      return parseFloat(((selfEv.avg * selfW + supEv.avg * supW) / total).toFixed(2));
+    }
+    return null;
+  }
+
   // Greeting + cycle
   document.getElementById('dash-greeting').textContent = `สวัสดี, ${currentUser.name} 👋`;
   const cycleEl = document.getElementById('dash-cycle');
@@ -1578,8 +1615,9 @@ function renderDashboard(){
 
   // ── EMPLOYEE (Maintenance Operator) ──────────────────
   if(isEmployee()){
-    const me     = myEmpRecord();
-    const myEv   = me ? latestEvalInCycle(me.id) : null;
+    const me      = myEmpRecord();
+    const myEv    = me ? latestEvalInCycle(me.id) : null;
+    const cScore  = me ? combinedScoreInCycle(me.id, me.name) : null;
     const deptCfg = allDepts.find(d => d.name === me?.dept);
 
     document.getElementById('dash-stats').innerHTML = `
@@ -1595,7 +1633,7 @@ function renderDashboard(){
       </div>
       <div class="stat-card">
         <div class="stat-icon">⭐</div>
-        <div class="stat-num" style="color:var(--blue-600)">${myEv?myEv.avg.toFixed(1):'—'}</div>
+        <div class="stat-num" style="color:var(--blue-600)">${cScore!==null?cScore.toFixed(2):'—'}</div>
         <div class="stat-label">คะแนนรอบนี้ / 5</div>
       </div>
       <div class="stat-card">
@@ -1604,8 +1642,8 @@ function renderDashboard(){
         <div class="stat-label">ประเมินล่าสุด (รอบนี้)</div>
       </div>`;
 
-    const pct = myEv ? Math.round(myEv.avg/5*100) : 0;
-    document.getElementById('dash-progress-pct').textContent = myEv ? myEv.avg.toFixed(1)+' / 5' : '—';
+    const pct = cScore !== null ? Math.round(cScore/5*100) : 0;
+    document.getElementById('dash-progress-pct').textContent = cScore !== null ? cScore.toFixed(2)+' / 5' : '—';
     document.getElementById('dash-progress-bar').style.width = pct+'%';
     document.getElementById('dash-cycle-start').textContent = activeCycle ? `เริ่ม ${fmtDate(activeCycle.startDate)}` : 'ไม่มีรอบประเมินที่เปิดอยู่';
     document.getElementById('dash-cycle-end').textContent   = activeCycle ? `กำหนดส่ง ${fmtDate(activeCycle.endDate)}` : '';
@@ -1627,7 +1665,7 @@ function renderDashboard(){
           <td>${me?.dept||'—'}</td>
           <td style="text-align:center">—</td><td style="text-align:center">✅</td>
           <td><span class="tag tag-green">✅ เสร็จสิ้น</span></td>
-          <td style="text-align:center"><span class="font-bold" style="color:${myEv.avg>=4?'var(--green-600)':'var(--blue-600)'}">${myEv.avg.toFixed(1)}</span></td>
+          <td style="text-align:center">${cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
         </tr>`
       : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">ยังไม่มีผลการประเมินในรอบนี้</td></tr>`;
     return;
@@ -1642,12 +1680,9 @@ function renderDashboard(){
     const subs    = getEligibleByDepth(allEmployees);
     const done    = subs.filter(e => doneInCycle(e.id));
     const pending = subs.length - done.length;
-    const cycleEvals = subs.flatMap(e => allEvals.filter(ev =>
-      ev.empId === e.id &&
-      (!activeCycle || (ev.date >= activeCycle.startDate && ev.date <= activeCycle.endDate))
-    ));
-    const avg = cycleEvals.length
-      ? (cycleEvals.reduce((s,ev)=>s+ev.avg,0)/cycleEvals.length).toFixed(1) : '—';
+    const scoredSubs = subs.filter(e => combinedScoreInCycle(e.id, e.name) !== null);
+    const avg = scoredSubs.length
+      ? (scoredSubs.map(e => combinedScoreInCycle(e.id, e.name)).reduce((s,v)=>s+v,0)/scoredSubs.length).toFixed(1) : '—';
     const pct = subs.length ? Math.round(done.length/subs.length*100) : 0;
 
     document.getElementById('dash-stats').innerHTML = `
@@ -1684,11 +1719,11 @@ function renderDashboard(){
     } else { alertEl.style.display='none'; }
 
     document.getElementById('dash-table').innerHTML = subs.length ? subs.map(emp => {
-      const ev           = latestEvalInCycle(emp.id);
       const isDone       = doneInCycle(emp.id);
       const isSelf       = selfEvalDone(emp.id, emp.name);
       const isSupervisor = supervisorEvalDone(emp.id, emp.name);
       const canSelfEval  = ['JC2','JC3','JC4','JC5'].includes(emp.jobClass);
+      const cScore       = combinedScoreInCycle(emp.id, emp.name);
       const lvlIcon = emp.manager === currentUser.name ? '└─' : '&nbsp;&nbsp;&nbsp;└─';
       return `<tr>
         <td><div class="user-cell">
@@ -1702,7 +1737,7 @@ function renderDashboard(){
         <td style="text-align:center">${canSelfEval?(isSelf?'✅':'⏳'):'—'}</td>
         <td style="text-align:center">${isSupervisor?'✅':'⏳'}</td>
         <td>${isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>'}</td>
-        <td style="text-align:center">${ev?`<span class="font-bold" style="color:${ev.avg>=4?'var(--green-600)':ev.avg>=3?'var(--blue-600)':'var(--yellow-600)'}">${ev.avg.toFixed(1)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
+        <td style="text-align:center">${cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
       </tr>`;
     }).join('')
     : `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--gray-400)">ไม่มีพนักงานในสายงานของคุณ</td></tr>`;
@@ -1712,8 +1747,9 @@ function renderDashboard(){
   // ── HR (Staff Leader) — org-wide + per-shift breakdown ─
   const done    = allEmployees.filter(e => doneInCycle(e.id));
   const pending = allEmployees.length - done.length;
-  const allAvg  = done.length
-    ? (done.map(e => latestEvalInCycle(e.id)?.avg||0).reduce((s,v)=>s+v,0)/done.length).toFixed(1) : '—';
+  const scoredAll = allEmployees.filter(e => combinedScoreInCycle(e.id, e.name) !== null);
+  const allAvg  = scoredAll.length
+    ? (scoredAll.map(e => combinedScoreInCycle(e.id, e.name)).reduce((s,v)=>s+v,0)/scoredAll.length).toFixed(1) : '—';
   const pct = allEmployees.length ? Math.round(done.length/allEmployees.length*100) : 0;
 
   document.getElementById('dash-stats').innerHTML = `
@@ -1774,11 +1810,11 @@ function renderDashboard(){
   } else { alertEl.style.display='none'; }
 
   document.getElementById('dash-table').innerHTML = allEmployees.map(emp => {
-    const ev           = latestEvalInCycle(emp.id);
     const isDone       = doneInCycle(emp.id);
     const isSelf       = selfEvalDone(emp.id, emp.name);
     const isSupervisor = supervisorEvalDone(emp.id, emp.name);
     const canSelfEval  = ['JC2','JC3','JC4','JC5'].includes(emp.jobClass);
+    const cScore       = combinedScoreInCycle(emp.id, emp.name);
     const dept   = allDepts.find(d => d.name === emp.dept);
     return `<tr>
       <td><div class="user-cell">
@@ -1791,7 +1827,7 @@ function renderDashboard(){
       <td style="text-align:center">${canSelfEval?(isSelf?'✅':'⏳'):'—'}</td>
       <td style="text-align:center">${emp.jobClass==='JC1'?'—':(isSupervisor?'✅':'⏳')}</td>
       <td>${emp.jobClass==='JC1'?'<span class="tag tag-gray" style="font-size:11px">—</span>':(isDone?'<span class="tag tag-green">✅ เสร็จสิ้น</span>':'<span class="tag tag-yellow">⏳ รอประเมิน</span>')}</td>
-      <td style="text-align:center">${ev?`<span class="font-bold" style="color:${ev.avg>=4?'var(--green-600)':ev.avg>=3?'var(--blue-600)':'var(--yellow-600)'}">${ev.avg.toFixed(1)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
+      <td style="text-align:center">${cScore!==null?`<span class="font-bold" style="color:${cScore>=4?'var(--green-600)':cScore>=3?'var(--blue-600)':'var(--yellow-600)'}">${cScore.toFixed(2)}</span>`:'<span style="color:var(--gray-300)">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -4354,6 +4390,54 @@ function renderPermissions(){
     </div>`;
 }
 
+// ── SETTINGS ─────────────────────────────────────────────
+function renderSettings(){
+  if(!isHR()){ goTo('dashboard'); return; }
+  const settings = DB.get('settings', {});
+  const selfW = settings.selfWeight ?? 30;
+  const supW  = settings.supWeight  ?? 70;
+  document.getElementById('settings-content').innerHTML = `
+    <div class="card mb-4">
+      <div class="font-semibold mb-3" style="font-size:15px">⚖️ น้ำหนักคะแนนประเมิน</div>
+      <p class="text-sm" style="color:var(--gray-500);margin-bottom:16px">
+        กำหนดสัดส่วนน้ำหนักระหว่าง SELF และหัวหน้าในการคำนวณคะแนนรวม (รวมต้องเท่ากับ 100%)
+      </p>
+      <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+        <div>
+          <label style="display:block;font-size:13px;color:var(--gray-600);margin-bottom:4px">น้ำหนัก SELF (%)</label>
+          <input type="number" id="inp-self-weight" min="0" max="100" value="${selfW}"
+            style="width:90px;padding:6px 10px;border:1px solid var(--gray-300);border-radius:6px;font-size:14px"
+            oninput="syncSupWeight()">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;color:var(--gray-600);margin-bottom:4px">น้ำหนักหัวหน้า (%)</label>
+          <input type="number" id="inp-sup-weight" min="0" max="100" value="${supW}"
+            style="width:90px;padding:6px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:14px;background:var(--gray-50)"
+            readonly>
+        </div>
+        <button class="btn btn-primary" onclick="saveSettings()">💾 บันทึก</button>
+      </div>
+      <div style="font-size:12px;color:var(--gray-500);background:var(--gray-50);padding:10px 14px;border-radius:8px">
+        ตัวอย่าง: SELF = 4.20, หัวหน้า = 3.60, น้ำหนัก ${selfW}/${supW} →
+        <strong>${((4.2*selfW + 3.6*supW)/100).toFixed(2)} / 5</strong>
+      </div>
+    </div>`;
+}
+
+function syncSupWeight(){
+  const selfVal = Math.min(100, Math.max(0, parseInt(document.getElementById('inp-self-weight').value)||0));
+  document.getElementById('inp-sup-weight').value = 100 - selfVal;
+}
+
+function saveSettings(){
+  const selfW = Math.min(100, Math.max(0, parseInt(document.getElementById('inp-self-weight').value)||30));
+  const supW  = 100 - selfW;
+  DB.set('settings', { selfWeight: selfW, supWeight: supW });
+  showToast('✅ บันทึกการตั้งค่าสำเร็จ', 'success');
+  renderSettings();
+  renderDashboard();
+}
+
 // ── CRITERIA MANAGEMENT ──────────────────────────────────
 let editingSectionId  = null;
 let editingItemId     = null;
@@ -5106,7 +5190,7 @@ document.getElementById('login-email').addEventListener('keydown', e=>{
 
   // ── subscribe Firestore ด้วย onSnapshot เพื่อรับอัปเดตแบบ real-time ──
   setFirebaseStatus('connecting');
-  const FS_KEYS = ['users','employees','evals','criteria','cycles','departments','notifications','seeded','migrated_name_v1'];
+  const FS_KEYS = ['users','employees','evals','criteria','cycles','departments','notifications','seeded','migrated_name_v1','settings'];
 
   // เก็บ unsubscribe functions ไว้ล้างตอน logout
   const _unsubscribers = [];
