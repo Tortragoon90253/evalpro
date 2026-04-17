@@ -746,6 +746,10 @@ tr:hover td{background:var(--gray-50)}
           <label class="form-label">วันที่เริ่มงาน</label>
           <input class="form-input" id="emp-startdate" type="date" />
         </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">ชื่อไฟล์รูปภาพ <span class="text-xs text-gray">(ถ้าว่างจะใช้ชื่อพนักงาน.jpg อัตโนมัติ)</span></label>
+          <input class="form-input" id="emp-photo" placeholder="เช่น สมชาย ใจดี.jpg" />
+        </div>
       </div>
     </div>
     <div class="modal-footer">
@@ -1069,6 +1073,17 @@ const DB = {
 const COLORS = ['#3B82F6','#22C55E','#F97316','#8B5CF6','#14B8A6','#EC4899','#EAB308','#EF4444'];
 function avatarColor(name){ return COLORS[name.charCodeAt(0)%COLORS.length]; }
 function avatarText(name){ return name.slice(0,2); }
+
+// ── Employee photo avatar ─────────────────────────────────
+const PHOTO_BASE = 'https://raw.githubusercontent.com/Tortragoon90253/evalpro/main/Employee%20photo/';
+function empAvatar(emp, opts){
+  const size = opts?.size  || 36;
+  const fs   = opts?.fs    || Math.round(size * 0.38);
+  const bg   = opts?.color || avatarColor(emp.name||'');
+  const filename = emp.photo || ((emp.name||'') + '.jpg');
+  const url  = PHOTO_BASE + encodeURIComponent(filename);
+  return `<div class="avatar" style="width:${size}px;height:${size}px;font-size:${fs}px;background:${bg};position:relative;overflow:hidden;flex-shrink:0" title="${emp.name||''}"><img src="${url}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center top" onerror="this.remove()">${avatarText(emp.name||'')}</div>`;
+}
 
 // ── Password hashing (FNV-1a 32-bit — obfuscation for local storage) ─────────
 function hashPass(s){
@@ -1727,7 +1742,7 @@ function renderDashboard(){
       const lvlIcon = emp.manager === currentUser.name ? '└─' : '&nbsp;&nbsp;&nbsp;└─';
       return `<tr>
         <td><div class="user-cell">
-          <div class="avatar" style="background:${deptCfg?.color||avatarColor(emp.name)}">${avatarText(emp.name)}</div>
+          ${empAvatar(emp,{size:36,color:deptCfg?.color||avatarColor(emp.name)})}
           <div>
             <div class="font-semibold">${emp.name}</div>
             <div class="text-xs text-gray">${lvlIcon} ${emp.position?.split('/')[0]?.trim()||''}</div>
@@ -1818,7 +1833,7 @@ function renderDashboard(){
     const dept   = allDepts.find(d => d.name === emp.dept);
     return `<tr>
       <td><div class="user-cell">
-        <div class="avatar" style="background:${dept?.color||avatarColor(emp.name)}">${avatarText(emp.name)}</div>
+        ${empAvatar(emp,{size:36,color:dept?.color||avatarColor(emp.name)})}
         <div><div class="font-semibold">${emp.name}</div>
           <div class="text-xs" style="color:${dept?.color||'var(--gray-400)'}">${dept?.icon||''} ${emp.dept}</div>
         </div>
@@ -1942,7 +1957,7 @@ function renderEmployees(){
     const safeEmp = JSON.stringify(emp).replace(/'/g,"&#39;");
     return `<div class="emp-card">
       <div class="emp-card-header">
-        <div class="emp-card-avatar" style="background:${deptColor}">${avatarText(emp.name)}</div>
+        ${empAvatar(emp,{size:52,fs:18,color:deptColor}).replace('class="avatar"','class="emp-card-avatar"')}
         <div class="emp-card-info">
           <div class="emp-card-name">${emp.name}</div>
           <div class="emp-card-pos">${emp.position}</div>
@@ -1974,7 +1989,7 @@ function renderEmployees(){
     const safeEmp = JSON.stringify(emp).replace(/'/g,"&#39;");
     return `<tr>
       <td><div class="user-cell">
-        <div class="avatar" style="background:${dept?.color||avatarColor(emp.name)}">${avatarText(emp.name)}</div>
+        ${empAvatar(emp,{size:36,color:dept?.color||avatarColor(emp.name)})}
         <div>
           <div class="font-semibold">${emp.name}</div>
           <div class="text-xs text-gray">${emp.startdate?`📅 ${fmtDate(emp.startdate)} · ${workDuration(emp.startdate)}`:'—'}</div>
@@ -2018,7 +2033,7 @@ function populateManagerDropdown(selectedManager){
 
 function openAddEmployee(){
   editingEmpId = null;
-  ['emp-name','emp-position','emp-startdate'].forEach(id=>document.getElementById(id).value='');
+  ['emp-name','emp-position','emp-startdate','emp-photo'].forEach(id=>document.getElementById(id).value='');
   populateEmpDeptDropdown('');
   populateManagerDropdown('');
   document.getElementById('emp-type').value     = 'พนักงานประจำกะ A';
@@ -2038,6 +2053,7 @@ function openEditEmployee(emp){
   document.getElementById('emp-jobclass').value  = emp.jobClass||'JC4';
   populateEmpDeptDropdown(emp.dept||'');
   populateManagerDropdown(emp.manager||'');
+  document.getElementById('emp-photo').value = emp.photo||'';
   document.querySelector('#modal-employee .modal-header h3').textContent = 'แก้ไขข้อมูลพนักงาน';
   document.getElementById('modal-employee').classList.remove('hidden');
 }
@@ -2054,6 +2070,7 @@ function saveEmployee(){
     type:      document.getElementById('emp-type').value,
     status:    document.getElementById('emp-status').value,
     startdate: document.getElementById('emp-startdate').value,
+    photo:     document.getElementById('emp-photo').value.trim(),
     jobClass,
   };
   let employees = DB.get('employees',[]);
@@ -2117,8 +2134,8 @@ function deleteEmployee(id){
 
 // ── CSV IMPORT / EXPORT ──────────────────────────────────
 
-const CSV_HEADERS = ['name','position','dept','type','jobClass','manager','startdate','status'];
-const CSV_HEADERS_TH = ['ชื่อ-นามสกุล','ตำแหน่ง','แผนก/กะ','ประเภทการจ้างงาน','JobClass','หัวหน้างาน','วันที่เริ่มงาน','สถานะ'];
+const CSV_HEADERS = ['name','position','dept','type','jobClass','manager','startdate','status','photo'];
+const CSV_HEADERS_TH = ['ชื่อ-นามสกุล','ตำแหน่ง','แผนก/กะ','ประเภทการจ้างงาน','JobClass','หัวหน้างาน','วันที่เริ่มงาน','สถานะ','รูปภาพ'];
 
 function csvEscape(v){
   if(v===undefined||v===null) return '';
@@ -2522,7 +2539,7 @@ function loadEvalForm(){
   document.getElementById('eval-step2').classList.remove('hidden');
   document.getElementById('eval-emp-info').innerHTML = `
     <div class="flex items-center gap-3">
-      <div class="avatar" style="background:${avatarColor(emp.name)};width:48px;height:48px;font-size:16px">${avatarText(emp.name)}</div>
+      ${empAvatar(emp,{size:48,fs:16})}
       <div style="flex:1">
         <div class="font-bold text-lg">${emp.name}</div>
         <div class="text-gray text-sm">${emp.position} · ${emp.dept} ${emp.startdate?'· เริ่มงาน '+emp.startdate:''}</div>
@@ -2771,7 +2788,7 @@ function renderProgressTable(list){
         const evaluators = [...new Set(evList.map(ev=>ev.evaluator))].join(', ') || '—';
         return `<tr>
           <td><div class="user-cell">
-            <div class="avatar" style="background:${deptObj?.color||'#6B7280'};width:32px;height:32px;font-size:11px">${avatarText(emp.name)}</div>
+            ${empAvatar(emp,{size:32,fs:11,color:deptObj?.color||'#6B7280'})}
             <div class="font-semibold text-sm">${emp.name}</div>
           </div></td>
           <td class="text-sm text-gray">${emp.position||'—'}</td>
@@ -2969,7 +2986,8 @@ function fmtDateStr(d){
 }
 
 function renderHistory(){
-  const allCycles = DB.get('cycles',[]);
+  const allCycles  = DB.get('cycles',[]);
+  const allEmpList = DB.get('employees',[]);
   function evalCycleClosed(ev){
     const c = allCycles.find(c => ev.date >= c.startDate && ev.date <= c.endDate);
     return c ? c.status === 'closed' : false;
@@ -3016,7 +3034,7 @@ function renderHistory(){
       : `<div class="text-sm text-gray">ประเมินโดย: ${ev.evaluator}</div>`;
     return `<div class="history-card">
       <div class="flex items-center gap-3" style="flex:1">
-        <div class="avatar" style="background:${avatarColor(ev.empName)};width:44px;height:44px">${avatarText(ev.empName)}</div>
+        ${empAvatar(allEmpList.find(e=>e.name===ev.empName)||{name:ev.empName},{size:44})}
         <div>
           <div class="font-bold" style="font-size:16px">${ev.empName}</div>
           ${evaluatorLine}
@@ -3154,7 +3172,7 @@ function renderMyResults(){
     const stars = '★'.repeat(Math.round(ev.avg))+'☆'.repeat(5-Math.round(ev.avg));
     return `<div class="history-card">
       <div class="flex items-center gap-3" style="flex:1">
-        <div class="avatar" style="background:${avatarColor(ev.empName)};width:44px;height:44px">${avatarText(ev.empName)}</div>
+        ${empAvatar(me||{name:ev.empName},{size:44})}
         <div>
           <div class="font-bold" style="font-size:15px">${ev.empName}</div>
           <div class="text-sm text-gray">ประเมินโดย: <span style="color:var(--gray-400)">🔒 ไม่เปิดเผย</span></div>
@@ -3469,7 +3487,7 @@ function renderReports(){
     return `<tr>
       <td style="text-align:center;font-size:${i<3?'18':'13'}px">${medal}</td>
       <td><div class="user-cell">
-        <div class="avatar" style="background:${avatarColor(emp.name)};width:32px;height:32px;font-size:11px">${avatarText(emp.name)}</div>
+        ${empAvatar(emp,{size:32,fs:11})}
         <span class="font-semibold">${emp.name}</span>
       </div></td>
       <td class="text-sm text-gray">${emp.dept.split(' (')[0]}</td>
@@ -3567,7 +3585,7 @@ function renderReports(){
       <div id="rpt-cmp-picks" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         ${empList.map(emp=>`<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:5px 10px;border:1.5px solid var(--gray-200);border-radius:8px;user-select:none">
           <input type="checkbox" value="${emp.id}" onchange="renderCompare()" style="accent-color:#3B82F6">
-          <span class="avatar" style="background:${avatarColor(emp.name)};width:22px;height:22px;font-size:8px;flex-shrink:0">${avatarText(emp.name)}</span>
+          ${empAvatar(emp,{size:22,fs:8})}
           ${emp.name.split(' ')[0]}
         </label>`).join('')}
       </div>
@@ -4060,7 +4078,7 @@ function renderCompare(){
       }).join('');
       return `<tr>
         <td><div class="user-cell">
-          <div class="avatar" style="background:${COLORS[i]};width:28px;height:28px;font-size:10px">${avatarText(emp.name)}</div>
+          ${empAvatar(emp,{size:28,fs:10,color:COLORS[i]})}
           <span class="font-semibold">${emp.name}</span>
         </div></td>
         <td class="text-sm text-gray">${emp.dept.split(' (')[0]}</td>
